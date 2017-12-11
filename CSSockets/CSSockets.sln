@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26730.12
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSSockets", "CSSockets\CSSockets.csproj", "{AC828306-A9D4-4145-9F59-AD3BB023F2FB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSSockets", "CSSockets.csproj", "{AC828306-A9D4-4145-9F59-AD3BB023F2FB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

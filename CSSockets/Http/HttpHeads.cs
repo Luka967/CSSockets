@@ -4,12 +4,16 @@ using System.Text;
 
 namespace WebSockets.Http
 {
-    public class HttpRequestHead
+    abstract public class HttpHead
+    {
+        public HttpVersion Version { get; internal set; }
+        public HttpHeaders Headers { get; internal set; }
+    }
+
+    public class HttpRequestHead : HttpHead
     {
         public string Method { get; internal set; }
         public HttpQuery Query { get; internal set; }
-        public HttpVersion Version { get; internal set; }
-        public HttpHeaders Headers { get; internal set; }
 
         public HttpRequestHead()
         {
@@ -19,17 +23,22 @@ namespace WebSockets.Http
         }
     }
 
-    public class HttpResponseHead
+    public class HttpResponseHead : HttpHead
     {
-        public HttpVersion Version { internal get; set; }
-        public ushort Code { internal get; set; }
-        public string Description { internal get; set; }
-        public HttpHeaders Headers { internal get; set; }
+        public ushort StatusCode { internal get; set; }
+        public string StatusDescription { internal get; set; }
 
+        public HttpResponseHead()
+        {
+            StatusCode = 0;
+            StatusDescription = null;
+            Version = null;
+            Headers = new HttpHeaders();
+        }
         public HttpResponseHead(HttpVersion version)
         {
-            Code = 200;
-            Description = "OK";
+            StatusCode = 200;
+            StatusDescription = "OK";
             Version = version;
             Headers = new HttpHeaders();
         }

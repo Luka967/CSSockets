@@ -37,7 +37,7 @@ namespace WebSockets.Http
         public void Write(HttpResponseHead head)
         {
             StringBuilder builder = new StringBuilder();
-            builder.Append(head.Version.ToString() + WHITESPACE + head.Code + WHITESPACE + head.Description + CRLF);
+            builder.Append(head.Version.ToString() + WHITESPACE + head.StatusCode + WHITESPACE + head.StatusDescription + CRLF);
             foreach (HttpHeader header in head.Headers.AsCollection())
                 builder.Append(header.Name + EQUALS + WHITESPACE + header.Value + CRLF);
             builder.Append(CRLF);

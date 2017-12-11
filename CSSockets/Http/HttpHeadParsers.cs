@@ -6,7 +6,46 @@ using WebSockets.Streams;
 
 namespace WebSockets.Http
 {
-    abstract public class HttpHeadParser : BaseDuplex { }
+    abstract public class HttpHeadParser<T> : BaseDuplex, IAsyncOutputter<T>
+        where T : HttpHead, new()
+    {
+        public event AsyncCreationHandler<T> OnOutput;
+        protected Queue<T> HeadQueue { get; } = new Queue<T>();
+        protected void PushIncoming()
+        {
+            if (OnOutput != null) OnOutput(Incoming);
+            else HeadQueue.Enqueue(Incoming);
+            Incoming = new T();
+        }
+        public T Next()
+        {
+            ThrowIfEnded();
+            if (!HeadQueue.Dequeue(out T item))
+                // ended
+                return null;
+            return item;
+        }
+        protected T Incoming { get; set; } = new T();
+        protected HttpStringQueue StringQueue { get; } = new HttpStringQueue();
+
+        abstract protected int ProcessData(byte[] data, bool writeExcess);
+
+        protected const char WHITESPACE = ' ';
+        protected const char EQUALS = '=';
+        protected const char CR = '\r';
+        protected const char LF = '\n';
+
+        public override byte[] Read() => Readable.Read();
+        public override byte[] Read(int length) => Readable.Read(length);
+        public override void Write(byte[] data) => ProcessData(data, true);
+        public int WriteWithoutOverflow(byte[] data) => ProcessData(data, false);
+
+        public override void End()
+        {
+            base.End();
+            HeadQueue.End();
+        }
+    }
 
     internal enum RequestParserState
     {
@@ -19,33 +58,11 @@ namespace WebSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class HttpRequestHeadParser : HttpHeadParser, IAsyncOutputter<HttpRequestHead>
+    public class HttpRequestHeadParser : HttpHeadParser<HttpRequestHead>
     {
-        public event AsyncCreationHandler<HttpRequestHead> OnOutput;
-        private Queue<HttpRequestHead> HeadQueue { get; } = new Queue<HttpRequestHead>();
-        private void PushIncoming()
-        {
-            if (OnOutput != null) OnOutput(Incoming);
-            else HeadQueue.Enqueue(Incoming);
-            Incoming = new HttpRequestHead();
-        }
-        public HttpRequestHead Next()
-        {
-            ThrowIfEnded();
-            if (!HeadQueue.Dequeue(out HttpRequestHead item))
-                // ended
-                return null;
-            return item;
-        }
-
-        private const char WHITESPACE = ' ';
-        private const char EQUALS = '=';
-        private const char CR = '\r';
-        private const char LF = '\n';
-        private HttpRequestHead Incoming { get; set; } = new HttpRequestHead();
         private RequestParserState State { get; set; } = RequestParserState.Method;
-        private HttpStringQueue StringQueue { get; } = new HttpStringQueue();
-        private int ProcessData(byte[] data, bool writeExcess)
+
+        protected override int ProcessData(byte[] data, bool writeExcess)
         {
             ThrowIfEnded();
             bool run = true; int i = 0;
@@ -132,16 +149,109 @@ namespace WebSockets.Http
                 Readable.Write(data, i, data.Length - i);
             return i;
         }
+    }
 
-        public override byte[] Read() => Readable.Read();
-        public override byte[] Read(int length) => Readable.Read(length);
-        public override void Write(byte[] data) => ProcessData(data, true);
-        public int WriteWithOverflow(byte[] data) => ProcessData(data, false);
+    internal enum ResponseParserState
+    {
+        Version = 1,
+        StatusCode = 2,
+        StatusDescription = 3,
+        FirstLf = 4,
+        HeaderName = 5,
+        HeaderValue = 6,
+        HeaderLf = 7,
+        Lf = 8
+    }
+    public class HttpResponseHeadParser : HttpHeadParser<HttpResponseHead>
+    {
+        private ResponseParserState State { get; set; } = ResponseParserState.Version;
 
-        public override void End()
+        protected override int ProcessData(byte[] data, bool writeExcess)
         {
-            base.End();
-            HeadQueue.End();
+            ThrowIfEnded();
+            bool run = true; int i = 0;
+            for (; i < data.Length && run; i++)
+            {
+                char c = (char)data[i];
+                switch (State)
+                {
+                    case ResponseParserState.Version:
+                        if (c != WHITESPACE) StringQueue.Append(c);
+                        else
+                        {
+                            if (!HttpVersion.TryParse(StringQueue.Next(), out HttpVersion result))
+                            {
+                                End();
+                                return -1;
+                            }
+                            Incoming.Version = result;
+                            StringQueue.New();
+                            State = ResponseParserState.StatusCode;
+                        }
+                        break;
+                    case ResponseParserState.StatusCode:
+                        if (c != WHITESPACE) StringQueue.Append(c);
+                        else
+                        {
+                            if (!ushort.TryParse(StringQueue.Next(), out ushort result))
+                            {
+                                End();
+                                return -1;
+                            }
+                            Incoming.StatusCode = result;
+                            StringQueue.New();
+                            State = ResponseParserState.StatusCode;
+                        }
+                        break;
+                    case ResponseParserState.StatusDescription:
+                        if (c != CR) StringQueue.Append(c);
+                        else
+                        {
+                            Incoming.StatusDescription = StringQueue.Next();
+                            StringQueue.New();
+                            State = ResponseParserState.FirstLf;
+                        }
+                        break;
+                    case ResponseParserState.FirstLf:
+                        if (c != LF) { End(); return -1; }
+                        State = ResponseParserState.HeaderName;
+                        break;
+                    case ResponseParserState.HeaderName:
+                        if (c == CR) State = ResponseParserState.Lf;
+                        else if (c != EQUALS) StringQueue.Append(c);
+                        else
+                        {
+                            StringQueue.New();
+                            State = ResponseParserState.HeaderValue;
+                        }
+                        break;
+                    case ResponseParserState.HeaderValue:
+                        if (c != CR) StringQueue.Append(c);
+                        else
+                        {
+                            Incoming.Headers.Set(StringQueue.Next(), StringQueue.Next().Trim());
+                            State = ResponseParserState.HeaderLf;
+                        }
+                        break;
+                    case ResponseParserState.HeaderLf:
+                        if (c != LF) { End(); return -1; }
+                        else
+                        {
+                            StringQueue.New();
+                            State = ResponseParserState.HeaderName;
+                        }
+                        break;
+                    case ResponseParserState.Lf:
+                        if (c != LF) { End(); return -1; }
+                        run = false;
+                        PushIncoming();
+                        State = ResponseParserState.Version;
+                        break;
+                }
+            }
+            if (writeExcess)
+                Readable.Write(data, i, data.Length - i);
+            return i;
         }
     }
 }

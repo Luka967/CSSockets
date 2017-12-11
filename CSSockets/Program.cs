@@ -17,7 +17,7 @@ namespace WebSockets
     {
         static void Main(string[] args)
         {
-            TcpSocketTest(args);
+            RequestSerializerTest(args);
         }
 
         static void GzipDecompressorTest(string[] args)
@@ -68,6 +68,8 @@ namespace WebSockets
             serializer.Write(head);
             HttpRequestHead parsed = parser.Next();
             Console.ReadKey();
+            serializer.End();
+            parser.End();
         }
 
         static void RequestParserTest(string[] args)
@@ -79,7 +81,7 @@ Host: test-host.com
 Paramecium: Aleksa
 ";
             byte[] data = Encoding.ASCII.GetBytes(s);
-            Console.WriteLine("{0} {1}", parser.WriteWithOverflow(data), data.Length);
+            Console.WriteLine("{0} {1}", parser.WriteWithoutOverflow(data), data.Length);
             Console.WriteLine(parser.Ended);
             if (!parser.Ended)
             {

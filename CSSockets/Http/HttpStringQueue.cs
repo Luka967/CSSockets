@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 
 namespace WebSockets.Http
 {
-    sealed internal class HttpStringQueue
+    sealed public class HttpStringQueue
     {
         private ConcurrentQueue<StringBuilder> Queue { get; } = new ConcurrentQueue<StringBuilder>();
         private StringBuilder Last { get; set; } = null;

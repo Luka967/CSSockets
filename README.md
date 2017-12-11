@@ -20,7 +20,7 @@ Implementations:
     - [X] Paths
   - [ ] Head parsing
     - [X] Request head
-    - [ ] Response head
+    - [X] Response head
   - [X] Head serializing
     - [X] Request head
     - [X] Response head

@@ -1,0 +1,15 @@
+﻿- public class WebSocketMessageBuilder : IDuplex
+- public class WebSocketMessageParser : IDuplex
+
+- abstract public class WebSocket
+	- encapsulated public TcpSocket
+	- encapsulated protected WebSocketMessageBuilder
+	- encapsulated protected WebSocketMessageParser
+	- piping: WebSocketMessageBuilder => TcpSocket => WebSocketMessageParser
+	-> public class ClientWebSocket : WebSocket
+		- sends masked, receives unmasked
+	-> public class ServerWebSocket : WebSocket
+		- sends unmasked, receives masked
+
+- public class WebSocketServer
+	- encapsulated public HttpListener

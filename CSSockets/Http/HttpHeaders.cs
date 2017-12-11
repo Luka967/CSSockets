@@ -1,0 +1,79 @@
+﻿using System;
+using System.Text;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Collections.ObjectModel;
+
+namespace WebSockets.Http
+{
+    sealed public class HttpHeader
+    {
+        public string Name { get; }
+        public string Value { get; }
+        public HttpHeader(string name, string value)
+        {
+            Name = name;
+            Value = value;
+        }
+    }
+    sealed public class HttpHeaders
+    {
+        public static HashSet<string> DuplicatesIgnored = new HashSet<string>()
+            { "age", "authorization", "content-length", "content-type", "etag", "expires",
+              "from", "host", "if-modified-since", "if-unmodified-since", "last-modified",
+              "location", "max-forwards", "proxy-authorization", "referer", "retry-after",
+              "user-agent" };
+        private StringDictionary Headers { get; } = new StringDictionary();
+        private List<string> HeadersAdded { get; } = new List<string>();
+        public int Count => HeadersAdded.Count;
+
+        public string Get(string name) => Headers[name.ToLower()];
+        public string GetHeaderName(int index) => HeadersAdded[index];
+        public string GetLastHeaderName() =>
+            HeadersAdded.Count == 0 ? null : HeadersAdded[HeadersAdded.Count - 1];
+        public IReadOnlyList<HttpHeader> AsCollection()
+        {
+            List<HttpHeader> list = new List<HttpHeader>();
+            for (int i = 0; i < HeadersAdded.Count; i++)
+                list.Add(new HttpHeader(HeadersAdded[i], Get(HeadersAdded[i])));
+            return new ReadOnlyCollection<HttpHeader>(list);
+        }
+
+        public void Set(string name, string value)
+        {
+            name = name.ToLower();
+            string prevValue = Get(name);
+            if (prevValue != null && DuplicatesIgnored.Contains(name))
+                return;
+            else if (prevValue != null)
+                Headers[name] = prevValue + ", " + value.Trim();
+            else
+            {
+                Headers[name] = value.Trim();
+                HeadersAdded.Add(name);
+            }
+        }
+        public void Remove(string name)
+        {
+            if (Get(name) == null) return;
+            Headers.Remove(name);
+            HeadersAdded.Remove(name);
+        }
+
+        public string this[string headerName]
+        {
+            get => Get(headerName);
+            set { if (value == null) Remove(headerName); else Set(headerName, value); }
+        }
+        public string this[int index]
+        {
+            get => Get(HeadersAdded[index]);
+            set
+            {
+                if (value == null)
+                    Remove(HeadersAdded[index]);
+                else Set(HeadersAdded[index], value);
+            }
+        }
+    }
+}

@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Text;
-using WebSockets.Tcp;
-using WebSockets.Streams;
+using CSSockets.Streams;
 using System.Collections.Generic;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    public class HttpConnection : BaseDuplex
+    public class HttpChunkedEncodingParser : UnifiedDuplex
     {
         public override byte[] Read()
         {

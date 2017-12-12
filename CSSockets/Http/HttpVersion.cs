@@ -1,13 +1,13 @@
 ﻿using System;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    sealed public class HttpVersion
+    sealed public class Version
     {
         public byte Major { get; set; }
         public byte Minor { get; set; }
 
-        public static bool TryParse(string str, out HttpVersion result)
+        public static bool TryParse(string str, out Version result)
         {
             result = null;
             if (str.Length < 5 || !str.StartsWith("HTTP/"))
@@ -20,17 +20,17 @@ namespace WebSockets.Http
                 return false;
             if (!byte.TryParse(split[1], out byte _2))
                 return false;
-            result = new HttpVersion(_1, _2);
+            result = new Version(_1, _2);
             return true;
         }
-        public static HttpVersion Parse(string str)
+        public static Version Parse(string str)
         {
-            if (!TryParse(str, out HttpVersion result))
+            if (!TryParse(str, out Version result))
                 throw new ArgumentException("Invalid string format");
             return result;
         }
        
-        public HttpVersion(byte major, byte minor)
+        public Version(byte major, byte minor)
         {
             Major = major;
             Minor = minor;
@@ -39,15 +39,15 @@ namespace WebSockets.Http
         public override string ToString()
             => "HTTP/" + Major + "." + Minor;
 
-        public static implicit operator Version(HttpVersion version)
-            => new Version(version.Major, version.Minor);
-        public static implicit operator HttpVersion(Version version)
+        public static implicit operator System.Version(Version version)
+            => new System.Version(version.Major, version.Minor);
+        public static implicit operator Version(System.Version version)
         {
             if (version.Revision != 0 || version.Build != 0 ||
                 version.Major < 0 || version.Minor < 0 ||
                 version.Major > 255 || version.Minor > 255)
-                throw new InvalidOperationException("Cannot convert version " + version + " to a HTTP version");
-            return new HttpVersion((byte)version.Major, (byte)version.Minor);
+                throw new InvalidOperationException("Cannot convert version " + version + " to an HTTP version");
+            return new Version((byte)version.Major, (byte)version.Minor);
         }
     }
 }

@@ -4,39 +4,39 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    sealed public class HttpHeader
+    sealed public class Header
     {
         public string Name { get; }
         public string Value { get; }
-        public HttpHeader(string name, string value)
+        public Header(string name, string value)
         {
             Name = name;
             Value = value;
         }
     }
-    sealed public class HttpHeaders
+    sealed public class Headers
     {
         public static HashSet<string> DuplicatesIgnored = new HashSet<string>()
             { "age", "authorization", "content-length", "content-type", "etag", "expires",
               "from", "host", "if-modified-since", "if-unmodified-since", "last-modified",
               "location", "max-forwards", "proxy-authorization", "referer", "retry-after",
               "user-agent" };
-        private StringDictionary Headers { get; } = new StringDictionary();
+        private StringDictionary List { get; } = new StringDictionary();
         private List<string> HeadersAdded { get; } = new List<string>();
         public int Count => HeadersAdded.Count;
 
-        public string Get(string name) => Headers[name.ToLower()];
+        public string Get(string name) => List[name.ToLower()];
         public string GetHeaderName(int index) => HeadersAdded[index];
         public string GetLastHeaderName() =>
             HeadersAdded.Count == 0 ? null : HeadersAdded[HeadersAdded.Count - 1];
-        public IReadOnlyList<HttpHeader> AsCollection()
+        public IReadOnlyList<Header> AsCollection()
         {
-            List<HttpHeader> list = new List<HttpHeader>();
+            List<Header> list = new List<Header>();
             for (int i = 0; i < HeadersAdded.Count; i++)
-                list.Add(new HttpHeader(HeadersAdded[i], Get(HeadersAdded[i])));
-            return new ReadOnlyCollection<HttpHeader>(list);
+                list.Add(new Header(HeadersAdded[i], Get(HeadersAdded[i])));
+            return new ReadOnlyCollection<Header>(list);
         }
 
         public void Set(string name, string value)
@@ -46,17 +46,17 @@ namespace WebSockets.Http
             if (prevValue != null && DuplicatesIgnored.Contains(name))
                 return;
             else if (prevValue != null)
-                Headers[name] = prevValue + ", " + value.Trim();
+                List[name] = prevValue + ", " + value.Trim();
             else
             {
-                Headers[name] = value.Trim();
+                List[name] = value.Trim();
                 HeadersAdded.Add(name);
             }
         }
         public void Remove(string name)
         {
             if (Get(name) == null) return;
-            Headers.Remove(name);
+            List.Remove(name);
             HeadersAdded.Remove(name);
         }
 

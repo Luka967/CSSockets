@@ -1,4 +1,4 @@
-﻿namespace WebSockets.Streams
+﻿namespace CSSockets.Streams
 {
     /// <summary>
     /// An alternative for IDisposable, with a boolean indicator.

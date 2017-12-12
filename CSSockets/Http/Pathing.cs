@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
     internal static class StringJoiner
     {
@@ -16,11 +16,11 @@ namespace WebSockets.Http
             return s.Remove(s.Length - delimiter.Length, delimiter.Length);
         }
     }
-    sealed public class HttpSearchToken
+    sealed public class SearchToken
     {
         public string Key { get; }
         public string Value { get; set; }
-        public HttpSearchToken(string key, string value)
+        public SearchToken(string key, string value)
         {
             Key = key;
             Value = value;
@@ -28,21 +28,21 @@ namespace WebSockets.Http
         public override string ToString()
             => Key + "=" + Value;
     }
-    sealed public class HttpSearchTokens
+    sealed public class SearchTokenList
     {
-        private List<HttpSearchToken> Tokens { get; } = new List<HttpSearchToken>();
+        private List<SearchToken> Tokens { get; } = new List<SearchToken>();
 
         public int GetIndexFor(string key) => Tokens.FindIndex((v) => v.Key == key);
-        public HttpSearchToken Get(string key) => Tokens.Find((v) => v.Key == key);
+        public SearchToken Get(string key) => Tokens.Find((v) => v.Key == key);
         public void Set(string key, string value) => this[key] = value;
         public void Remove(string key) => Tokens.RemoveAt(GetIndexFor(key));
 
-        public IReadOnlyList<HttpSearchToken> Collection
-            => new ReadOnlyCollection<HttpSearchToken>(Tokens);
+        public IReadOnlyList<SearchToken> Collection
+            => new ReadOnlyCollection<SearchToken>(Tokens);
 
-        public static bool TryParse(string s, out HttpSearchTokens result)
+        public static bool TryParse(string s, out SearchTokenList result)
         {
-            HttpSearchTokens temp = new HttpSearchTokens();
+            SearchTokenList temp = new SearchTokenList();
             result = null;
             if (s.Length == 0)
             {
@@ -66,17 +66,17 @@ namespace WebSockets.Http
             result = temp;
             return true;
         }
-        public static HttpSearchTokens Parse(string s)
+        public static SearchTokenList Parse(string s)
         {
-            if (!TryParse(s, out HttpSearchTokens result))
+            if (!TryParse(s, out SearchTokenList result))
                 throw new ArgumentException("Invalid query string");
             return result;
         }
 
-        public HttpSearchTokens() { }
-        public HttpSearchTokens(string search)
+        public SearchTokenList() { }
+        public SearchTokenList(string search)
         {
-            HttpSearchTokens result = Parse(search);
+            SearchTokenList result = Parse(search);
             Tokens = result.Tokens;
         }
 
@@ -86,14 +86,14 @@ namespace WebSockets.Http
             set
             {
                 int index = GetIndexFor(tokenKey);
-                if (index == -1) Tokens.Add(new HttpSearchToken(tokenKey, value));
+                if (index == -1) Tokens.Add(new SearchToken(tokenKey, value));
                 else Tokens[index].Value = value;
             }
         }
 
         public override string ToString() => Tokens.Count == 0 ? "" : "?" + Tokens.Join("&");
     }
-    sealed public class HttpPath
+    sealed public class Path
     {
         private enum TraverseResult
         {
@@ -122,19 +122,19 @@ namespace WebSockets.Http
             }
         }
 
-        private List<string> Path { get; set; }
-        public string FullPath => "/" + Path.Join("/");
+        private List<string> Location { get; set; }
+        public string FullPath => "/" + Location.Join("/");
         public string Directory
         {
             get
             {
                 string s = "";
-                for (int i = 0; i < Path.Count - 1; i++)
-                    s += Path[i] + "/";
+                for (int i = 0; i < Location.Count - 1; i++)
+                    s += Location[i] + "/";
                 return s;
             }
         }
-        public string Entry => Path[Path.Count - 1];
+        public string Entry => Location[Location.Count - 1];
 
         private TraverseResult InternalInitialize(string path)
         {
@@ -148,7 +148,7 @@ namespace WebSockets.Http
                     return TraverseResult.AbsolutePathHasRelativeDirs;
                 pathList.Add(dirs[i]);
             }
-            Path = pathList;
+            Location = pathList;
             return TraverseResult.Success;
         }
         public void Initialize(string path = "/") => CheckTraverseResult(InternalInitialize(path));
@@ -156,7 +156,7 @@ namespace WebSockets.Http
 
         private TraverseResult InternalTraverse(string path)
         {
-            List<string> pathList = new List<string>(Path);
+            List<string> pathList = new List<string>(Location);
             string[] dirs = path.Split('/');
             if (dirs[0] == "")
                 return TraverseResult.NotRelativePath;
@@ -171,38 +171,38 @@ namespace WebSockets.Http
                 else if (dirs[i] == ".") { if (!acceptingBackwards) return TraverseResult.RelativePathHasInvalidRelativeDirs; }
                 else { pathList.Add(dirs[i]); acceptingBackwards = false; }
             }
-            Path = pathList;
+            Location = pathList;
             return TraverseResult.Success;
         }
         public void Traverse(string path = "/") => CheckTraverseResult(InternalTraverse(path));
         public bool TryTraverse(string path = "/") => InternalTraverse(path) == TraverseResult.Success;
 
-        public HttpPath() => Initialize();
-        public HttpPath(HttpPath other) => Initialize(other.FullPath);
-        public HttpPath(string path) => Initialize(path);
+        public Path() => Initialize();
+        public Path(Path other) => Initialize(other.FullPath);
+        public Path(string path) => Initialize(path);
 
         public override string ToString() => FullPath;
     }
-    sealed public class HttpQuery
+    sealed public class Query
     {
-        public HttpPath Path { get; set; }
+        public Path Path { get; set; }
         public string Hash { get; set; }
-        public HttpSearchTokens Searches { get; set; }
+        public SearchTokenList Searches { get; set; }
         public string Search
         {
             get => Searches?.ToString();
-            set => Searches = HttpSearchTokens.Parse(value);
+            set => Searches = SearchTokenList.Parse(value);
         }
 
-        public static HttpQuery Parse(string s)
+        public static Query Parse(string s)
         {
-            if (!TryParse(s, out HttpQuery result))
+            if (!TryParse(s, out Query result))
                 throw new ArgumentException("Invalid query");
             return result;
         }
-        public static bool TryParse(string s, out HttpQuery result)
+        public static bool TryParse(string s, out Query result)
         {
-            HttpQuery temp = new HttpQuery();
+            Query temp = new Query();
             result = null;
 
             string[] splitForHash = s.Split("#");
@@ -210,11 +210,11 @@ namespace WebSockets.Http
             string[] splitForSearch = splitForHash[0].Split("?");
             if (splitForSearch.Length > 1)
             {
-                if (!HttpSearchTokens.TryParse("?" + splitForSearch[1], out HttpSearchTokens searches))
+                if (!SearchTokenList.TryParse("?" + splitForSearch[1], out SearchTokenList searches))
                     return false;
                 temp.Searches = searches;
             }
-            HttpPath tempPath = new HttpPath();
+            Path tempPath = new Path();
             if (!tempPath.TryInitialize(splitForSearch[0]))
                 return false;
             temp.Path = tempPath;
@@ -222,27 +222,27 @@ namespace WebSockets.Http
             return true;
         }
 
-        public HttpQuery()
+        public Query()
         {
             Path = null;
             Hash = null;
             Searches = null;
         }
-        public HttpQuery(string path, string hash, string searchString)
+        public Query(string path, string hash, string searchString)
         {
             Path.Traverse(path);
             Hash = hash;
             Search = searchString;
         }
-        public HttpQuery(HttpPath path, string hash, HttpSearchTokens searches)
+        public Query(Path path, string hash, SearchTokenList searches)
         {
-            Path = new HttpPath(path.FullPath);
+            Path = new Path(path.FullPath);
             Hash = hash;
             Searches = searches;
         }
-        public HttpQuery(string query)
+        public Query(string query)
         {
-            HttpQuery result = Parse(query);
+            Query result = Parse(query);
             Path = result.Path;
             Hash = result.Hash;
             Searches = result.Searches;

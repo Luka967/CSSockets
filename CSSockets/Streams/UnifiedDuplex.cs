@@ -2,7 +2,7 @@
 using System.IO;
 using System.Threading;
 
-namespace WebSockets.Streams
+namespace CSSockets.Streams
 {
     /// <summary>
     /// Provides a basic, two-way memory-driven data pipe. This class can't be inherited.

@@ -1,44 +1,41 @@
 ﻿using System.Text;
-using WebSockets.Streams;
+using CSSockets.Streams;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    abstract public class HttpHeadSerializer : BaseReadable { }
-
-    public class HttpRequestHeadSerializer : HttpHeadSerializer
+    abstract public class HeadSerializer<T> : BaseReadable
+        where T : HttpHead, new()
     {
         public override byte[] Read() => Readable.Read();
         public override byte[] Read(int length) => Readable.Read(length);
 
-        private const char WHITESPACE = ' ';
-        private const char EQUALS = '=';
-        private const string CRLF = "\r\n";
+        protected const char WHITESPACE = ' ';
+        protected const char EQUALS = '=';
+        protected const string CRLF = "\r\n";
 
-        public void Write(HttpRequestHead head)
+        abstract public void Write(T head);
+    }
+
+    sealed public class RequestHeadSerializer : HeadSerializer<RequestHead>
+    {
+        public override void Write(RequestHead head)
         {
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Method + WHITESPACE + head.Query + WHITESPACE + head.Version + CRLF);
-            foreach (HttpHeader header in head.Headers.AsCollection())
+            foreach (Header header in head.Headers.AsCollection())
                 builder.Append(header.Name + EQUALS + WHITESPACE + header.Value + CRLF);
             builder.Append(CRLF);
             Readable.Write(Encoding.ASCII.GetBytes(builder.ToString()));
         }
     }
 
-    public class HttpResponseHeadSerializer : HttpHeadSerializer
+    sealed public class ResponseHeadSerializer : HeadSerializer<ResponseHead>
     {
-        public override byte[] Read() => Readable.Read();
-        public override byte[] Read(int length) => Readable.Read(length);
-
-        private const char WHITESPACE = ' ';
-        private const char EQUALS = '=';
-        private const string CRLF = "\r\n";
-
-        public void Write(HttpResponseHead head)
+        public override void Write(ResponseHead head)
         {
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Version.ToString() + WHITESPACE + head.StatusCode + WHITESPACE + head.StatusDescription + CRLF);
-            foreach (HttpHeader header in head.Headers.AsCollection())
+            foreach (Header header in head.Headers.AsCollection())
                 builder.Append(header.Name + EQUALS + WHITESPACE + header.Value + CRLF);
             builder.Append(CRLF);
             Readable.Write(Encoding.ASCII.GetBytes(builder.ToString()));

@@ -1,4 +1,4 @@
-﻿namespace WebSockets.Streams
+﻿namespace CSSockets.Streams
 {
     public class RawUnifiedDuplex : UnifiedDuplex
     {

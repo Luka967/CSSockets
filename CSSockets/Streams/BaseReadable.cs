@@ -2,7 +2,7 @@
 using System.IO;
 using System.Threading;
 
-namespace WebSockets.Streams
+namespace CSSockets.Streams
 {
     /// <summary>
     /// Encapsulates a UnifiedDuplex to provide a base class for a read-only data pipe.

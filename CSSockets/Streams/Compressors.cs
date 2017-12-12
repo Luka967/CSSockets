@@ -2,7 +2,7 @@
 using System.IO;
 using System.IO.Compression;
 
-namespace WebSockets.Streams
+namespace CSSockets.Streams
 {
     abstract public class CompressorDuplex : UnifiedDuplex
     {
@@ -16,8 +16,9 @@ namespace WebSockets.Streams
             if (Finished) throw new InvalidOperationException("Cannot perform this operation as the stream cannot write compressed data anymore");
         }
 
-        public CompressorDuplex()
+        public CompressorDuplex(CompressionLevel compressionLevel)
         {
+            CompressionLevel = compressionLevel;
             Cstream = new MemoryStream();
             Clock = new object();
             Finished = false;
@@ -65,22 +66,14 @@ namespace WebSockets.Streams
 
     public class GzipCompressor : CompressorDuplex
     {
-        public GzipCompressor(CompressionLevel compressionLevel)
-            : base()
-        {
-            Caccessor = new GZipStream(Cstream, compressionLevel, true);
-            CompressionLevel = compressionLevel;
-        }
+        public GzipCompressor(CompressionLevel compressionLevel) : base(compressionLevel)
+            => Caccessor = new GZipStream(Cstream, compressionLevel, true);
     }
 
     public class DeflateCompressor : CompressorDuplex
     {
-        public DeflateCompressor(CompressionLevel compressionLevel)
-            : base()
-        {
-            Caccessor = new DeflateStream(Cstream, compressionLevel, true);
-            CompressionLevel = compressionLevel;
-        }
+        public DeflateCompressor(CompressionLevel compressionLevel) : base(compressionLevel)
+            => Caccessor = new DeflateStream(Cstream, compressionLevel, true);
     }
 
     abstract public class DecompressorDuplex : UnifiedDuplex

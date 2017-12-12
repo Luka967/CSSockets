@@ -3,14 +3,14 @@ using System.Text;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    sealed public class HttpStringQueue
+    sealed public class StringQueue
     {
         private ConcurrentQueue<StringBuilder> Queue { get; } = new ConcurrentQueue<StringBuilder>();
         private StringBuilder Last { get; set; } = null;
 
-        public HttpStringQueue() => New();
+        public StringQueue() => New();
 
         public void New()
         {

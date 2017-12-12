@@ -2,45 +2,45 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
     abstract public class HttpHead
     {
-        public HttpVersion Version { get; internal set; }
-        public HttpHeaders Headers { get; internal set; }
+        public Version Version { get; internal set; }
+        public Headers Headers { get; internal set; }
     }
 
-    public class HttpRequestHead : HttpHead
+    sealed public class RequestHead : HttpHead
     {
         public string Method { get; internal set; }
-        public HttpQuery Query { get; internal set; }
+        public Query Query { get; internal set; }
 
-        public HttpRequestHead()
+        public RequestHead()
         {
             Query = null;
             Version = null;
-            Headers = new HttpHeaders();
+            Headers = new Headers();
         }
     }
 
-    public class HttpResponseHead : HttpHead
+    sealed public class ResponseHead : HttpHead
     {
         public ushort StatusCode { internal get; set; }
         public string StatusDescription { internal get; set; }
 
-        public HttpResponseHead()
+        public ResponseHead()
         {
             StatusCode = 0;
             StatusDescription = null;
             Version = null;
-            Headers = new HttpHeaders();
+            Headers = new Headers();
         }
-        public HttpResponseHead(HttpVersion version)
+        public ResponseHead(Version version)
         {
             StatusCode = 200;
             StatusDescription = "OK";
             Version = version;
-            Headers = new HttpHeaders();
+            Headers = new Headers();
         }
     }
 }

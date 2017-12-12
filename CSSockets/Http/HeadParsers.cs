@@ -1,12 +1,12 @@
 ﻿using System;
 using System.Text;
 using System.Threading;
-using WebSockets.Base;
-using WebSockets.Streams;
+using CSSockets.Base;
+using CSSockets.Streams;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
-    abstract public class HttpHeadParser<T> : BaseDuplex, IAsyncOutputter<T>
+    abstract public class HeadParser<T> : BaseDuplex, IAsyncOutputter<T>
         where T : HttpHead, new()
     {
         public event AsyncCreationHandler<T> OnOutput;
@@ -26,7 +26,7 @@ namespace WebSockets.Http
             return item;
         }
         protected T Incoming { get; set; } = new T();
-        protected HttpStringQueue StringQueue { get; } = new HttpStringQueue();
+        protected StringQueue StringQueue { get; } = new StringQueue();
 
         abstract protected int ProcessData(byte[] data, bool writeExcess);
 
@@ -58,7 +58,7 @@ namespace WebSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class HttpRequestHeadParser : HttpHeadParser<HttpRequestHead>
+    public class HttpRequestHeadParser : HeadParser<RequestHead>
     {
         private RequestParserState State { get; set; } = RequestParserState.Method;
 
@@ -84,7 +84,7 @@ namespace WebSockets.Http
                         if (c != WHITESPACE) StringQueue.Append(c);
                         else
                         {
-                            if (!HttpQuery.TryParse(StringQueue.Next(), out HttpQuery result))
+                            if (!Query.TryParse(StringQueue.Next(), out Query result))
                             {
                                 End();
                                 return -1;
@@ -98,7 +98,7 @@ namespace WebSockets.Http
                         if (c != CR) StringQueue.Append(c);
                         else
                         {
-                            if (!HttpVersion.TryParse(StringQueue.Next(), out HttpVersion result))
+                            if (!Version.TryParse(StringQueue.Next(), out Version result))
                             {
                                 End();
                                 return -1;
@@ -162,7 +162,7 @@ namespace WebSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class HttpResponseHeadParser : HttpHeadParser<HttpResponseHead>
+    public class HttpResponseHeadParser : HeadParser<ResponseHead>
     {
         private ResponseParserState State { get; set; } = ResponseParserState.Version;
 
@@ -179,7 +179,7 @@ namespace WebSockets.Http
                         if (c != WHITESPACE) StringQueue.Append(c);
                         else
                         {
-                            if (!HttpVersion.TryParse(StringQueue.Next(), out HttpVersion result))
+                            if (!Version.TryParse(StringQueue.Next(), out Version result))
                             {
                                 End();
                                 return -1;
@@ -200,7 +200,7 @@ namespace WebSockets.Http
                             }
                             Incoming.StatusCode = result;
                             StringQueue.New();
-                            State = ResponseParserState.StatusCode;
+                            State = ResponseParserState.StatusDescription;
                         }
                         break;
                     case ResponseParserState.StatusDescription:

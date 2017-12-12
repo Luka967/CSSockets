@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Threading;
-using WebSockets.Streams;
+using CSSockets.Streams;
 using System.Collections.Generic;
 
-namespace WebSockets.Base
+namespace CSSockets.Base
 {
     public class Queue<T> : IEndable
     {

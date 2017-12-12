@@ -3,7 +3,7 @@ using System;
 using System.Threading;
 using System.Collections.Generic;
 
-namespace WebSockets.Base
+namespace CSSockets.Base
 {
     public class Timeout
     {

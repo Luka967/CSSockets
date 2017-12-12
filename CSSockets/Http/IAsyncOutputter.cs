@@ -2,7 +2,7 @@
 using System.Text;
 using System.Collections.Generic;
 
-namespace WebSockets.Http
+namespace CSSockets.Http
 {
     public delegate void AsyncCreationHandler<T>(T item);
     public interface IAsyncOutputter<T>

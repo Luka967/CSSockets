@@ -18,7 +18,7 @@ Implementations:
     - [X] Version
     - [X] Query tokens
     - [X] Paths
-  - [ ] Head parsing
+  - [X] Head parsing
     - [X] Request head
     - [X] Response head
   - [X] Head serializing

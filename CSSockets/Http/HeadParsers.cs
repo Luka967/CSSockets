@@ -47,7 +47,7 @@ namespace CSSockets.Http
         }
     }
 
-    internal enum RequestParserState
+    internal enum RequestParserState : byte
     {
         Method = 1,
         Query = 2,
@@ -58,7 +58,7 @@ namespace CSSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class HttpRequestHeadParser : HeadParser<RequestHead>
+    public class RequestHeadParser : HeadParser<RequestHead>
     {
         private RequestParserState State { get; set; } = RequestParserState.Method;
 
@@ -151,7 +151,7 @@ namespace CSSockets.Http
         }
     }
 
-    internal enum ResponseParserState
+    internal enum ResponseParserState : byte
     {
         Version = 1,
         StatusCode = 2,
@@ -162,7 +162,7 @@ namespace CSSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class HttpResponseHeadParser : HeadParser<ResponseHead>
+    public class ResponseHeadParser : HeadParser<ResponseHead>
     {
         private ResponseParserState State { get; set; } = ResponseParserState.Version;
 

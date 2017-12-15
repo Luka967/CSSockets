@@ -9,7 +9,7 @@ namespace CSSockets.Tcp
     /// <summary>
     /// Represents the states a TcpSocket can have.
     /// </summary>
-    public enum TcpSocketState
+    public enum TcpSocketState : byte
     {
         Closed = 0,
         Opening = 1,

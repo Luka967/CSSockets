@@ -180,6 +180,7 @@ namespace CSSockets.Streams
         }
         virtual public void Unpipe(IReadable from)
         {
+            ThrowIfEnded();
             if (from.PipedTo == this) from.Unpipe();
             else throw new InvalidOperationException("The specified readable is not piped to this writable");
         }

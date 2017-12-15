@@ -20,6 +20,11 @@ namespace CSSockets
             ResponseSerializerTest(args);
         }
 
+        static void GzipCompressedBinaryBodyTest(string[] args)
+        {
+
+        }
+
         static void GzipDecompressorTest(string[] args)
         {
             DeflateCompressor compressor = new DeflateCompressor(CompressionLevel.Optimal);
@@ -54,7 +59,7 @@ namespace CSSockets
         static void ResponseSerializerTest(string[] args)
         {
             ResponseHeadSerializer serializer = new ResponseHeadSerializer();
-            HttpResponseHeadParser parser = new HttpResponseHeadParser();
+            ResponseHeadParser parser = new ResponseHeadParser();
             serializer.Pipe(parser);
             ResponseHead head = new ResponseHead
             {
@@ -74,7 +79,7 @@ namespace CSSockets
         static void RequestSerializerTest(string[] args)
         {
             RequestHeadSerializer serializer = new RequestHeadSerializer();
-            HttpRequestHeadParser parser = new HttpRequestHeadParser();
+            RequestHeadParser parser = new RequestHeadParser();
             serializer.Pipe(parser);
             RequestHead head = new RequestHead
             {
@@ -94,7 +99,7 @@ namespace CSSockets
 
         static void RequestParserTest(string[] args)
         {
-            HttpRequestHeadParser parser = new HttpRequestHeadParser();
+            RequestHeadParser parser = new RequestHeadParser();
             string s =
 @"GET /teastgsdfgdrgd rg HTTP/1.1
 Host: test-host.com

@@ -95,7 +95,7 @@ namespace CSSockets.Http
     }
     sealed public class Path
     {
-        private enum TraverseResult
+        private enum TraverseResult : byte
         {
             Success = 0,
             NotAbsolutePath = 1,

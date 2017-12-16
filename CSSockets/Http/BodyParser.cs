@@ -16,13 +16,13 @@ namespace CSSockets.Http
         Chunked_Trailer = 6,
         Chunked_Lf = 7
     }
-    sealed public class BodyParser : UnifiedDuplex
+    // readable side is content body, writable side is excess data if any
+    sealed public class BodyParser : BaseDuplex
     {
         private const char CR = '\r';
         private const char LF = '\n';
 
         public UnifiedDuplex ContentTransform { get; private set; } = null;
-        private RawUnifiedDuplex ExcessReadable { get; set; } = new RawUnifiedDuplex();
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
         public ContentEncoding ContentEncoding { get; private set; } = ContentEncoding.Unknown;
 
@@ -34,21 +34,21 @@ namespace CSSockets.Http
         private bool IsSet { get; set; } = false;
         private BodyParserState State { get; set; } = BodyParserState.Dormant;
 
-        public bool TrySetFor(HttpHead request)
+        public bool TrySetFor(HttpHead head)
         {
             ThrowIfEnded();
             // partial of RFC 7320's 3.3.3 is used
             TransferEncoding transfer = TransferEncoding.Raw;
             ContentEncoding content = ContentEncoding.Binary;
             int contentLen = -1;
-            if (request.Headers["Content-Length"] != null)
+            if (head.Headers["Content-Length"] != null)
             {
-                if (!int.TryParse(request.Headers["Content-Length"], out int len))
+                if (!int.TryParse(head.Headers["Content-Length"], out int len))
                     return false;
                 contentLen = len;
             }
             // does Transfer-Encoding actually have priority?
-            string joined = (request.Headers["Transfer-Encoding"] ?? "") + (request.Headers["Content-Encoding"] ?? "");
+            string joined = (head.Headers["Transfer-Encoding"] ?? "") + (head.Headers["Content-Encoding"] ?? "");
             if (joined == "") { Reset(transfer, content, contentLen); return true; }
             string[] split = joined.Split(',');
             for (int i = 0; i < split.Length; i++)
@@ -74,6 +74,10 @@ namespace CSSockets.Http
             }
             Reset(transfer, content, contentLen);
             return true;
+        }
+        public void SetFor(HttpHead head)
+        {
+            if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
         }
 
         private void Reset(TransferEncoding transfer, ContentEncoding content = ContentEncoding.Unknown, int contentLength = -1)
@@ -129,7 +133,7 @@ namespace CSSockets.Http
                         i += len;
                         CurrentReadBytes += len;
                         ContentTransform.Write(data);
-                        Bhandle(ContentTransform.Read());
+                        Readable.Write(ContentTransform.Read());
                         break;
                     case BodyParserState.Chunked_Length:
                         c = (char)data[i++];
@@ -157,7 +161,7 @@ namespace CSSockets.Http
                         CurrentReadBytes += len;
                         chunkIndex += len;
                         ContentTransform.Write(sliced);
-                        Bhandle(ContentTransform.Read());
+                        Readable.Write(ContentTransform.Read());
                         if (chunkLen == chunkIndex)
                             State = BodyParserState.Chunked_ChunkCr;
                         break;
@@ -196,26 +200,21 @@ namespace CSSockets.Http
                 len = data.Length - i;
                 sliced = new byte[len];
                 Buffer.BlockCopy(data, i, sliced, 0, len);
-                ExcessReadable.Write(sliced);
+                Writable.Write(sliced);
             }
             return i;
         }
 
-        public byte[] ReadExcess(bool block)
-        {
-            ThrowIfEnded();
-            if (!block && ExcessReadable.Buffered == 0) return new byte[0]; // or should it be null?
-            return ExcessReadable.Read();
-        }
-        public override byte[] Read() => Bread();
-        public override byte[] Read(int length) => Bread(length);
+        public byte[] ReadExcess() => Writable.Read();
+        public byte[] ReadExcess(int length) => Writable.Read(length);
+        public override byte[] Read() => Readable.Read();
+        public override byte[] Read(int length) => Readable.Read(length);
         public override void Write(byte[] data) => ProcessData(data, true);
         public int WriteSafe(byte[] data) => ProcessData(data, false);
 
         public override void End()
         {
             base.End();
-            ExcessReadable.End();
             if (IsSet) ContentTransform.End();
         }
     }

@@ -6,7 +6,7 @@ using CSSockets.Streams;
 
 namespace CSSockets.Http
 {
-    abstract public class HeadParser<T> : BaseDuplex, IAsyncOutputter<T>
+    abstract public class HeadParser<T> : UnifiedDuplex, IAsyncOutputter<T>
         where T : HttpHead, new()
     {
         public event AsyncCreationHandler<T> OnOutput;
@@ -35,8 +35,8 @@ namespace CSSockets.Http
         protected const char CR = '\r';
         protected const char LF = '\n';
 
-        public override byte[] Read() => Readable.Read();
-        public override byte[] Read(int length) => Readable.Read(length);
+        public override byte[] Read() => Bread();
+        public override byte[] Read(int length) => Bread(length);
         public override void Write(byte[] data) => ProcessData(data, true);
         public int WriteSafe(byte[] data) => ProcessData(data, false);
 
@@ -146,7 +146,7 @@ namespace CSSockets.Http
                 }
             }
             if (writeExcess)
-                Readable.Write(data, i, data.Length - i);
+                Bwrite(data, i, data.Length - i);
             return i;
         }
     }
@@ -250,7 +250,7 @@ namespace CSSockets.Http
                 }
             }
             if (writeExcess)
-                Readable.Write(data, i, data.Length - i);
+                Bwrite(data, i, data.Length - i);
             return i;
         }
     }

@@ -17,12 +17,47 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            ResponseSerializerTest(args);
+            BodyParserTest(args);
         }
 
-        static void GzipCompressedBinaryBodyTest(string[] args)
+        static void BodyParserTest(string[] args)
         {
+            HttpRequestHead request = new HttpRequestHead()
+            {
+                Method = "GET",
+                Headers = new HeaderCollection()
+                {
+                    new Header("Transfer-Encoding", "chunked"),
+                },
+                Query = new Query("/"),
+                Version = new Http.Version(1, 1)
+            };
+            BodyParser bodyParser = new BodyParser();
+            bodyParser.TrySetFor(request);
+            RawUnifiedDuplex sdf = new RawUnifiedDuplex();
+            sdf.Pipe(bodyParser);
+            sdf.Write(Encoding.ASCII.GetBytes("4\r\nTest\r\n0\r\nRandom-Header: 420\r\n\r\n"));
+            Console.WriteLine(Encoding.ASCII.GetString(bodyParser.Read()));
+            Console.ReadKey();
+        }
 
+        static void BodyParserEncodingDetectionTest(string[] args)
+        {
+            HttpRequestHead request = new HttpRequestHead()
+            {
+                Method = "GET",
+                Headers = new HeaderCollection()
+                {
+                    new Header("Content-Encoding", "chunked"),
+                    new Header("Content-Encoding", "deflate")
+                },
+                Query = new Query("/"),
+                Version = new Http.Version(1, 1)
+            };
+            BodyParser bodyParser = new BodyParser();
+            bool gotIt = bodyParser.TrySetFor(request);
+            Console.WriteLine(gotIt);
+            Console.ReadKey();
         }
 
         static void GzipDecompressorTest(string[] args)
@@ -61,7 +96,7 @@ namespace CSSockets
             ResponseHeadSerializer serializer = new ResponseHeadSerializer();
             ResponseHeadParser parser = new ResponseHeadParser();
             serializer.Pipe(parser);
-            ResponseHead head = new ResponseHead
+            HttpResponseHead head = new HttpResponseHead
             {
                 // imaginary status
                 StatusCode = 239,
@@ -72,7 +107,7 @@ namespace CSSockets
             head.Headers.Set("app_expect", "200");
             head.Headers.Set("app_expect", "400");
             serializer.Write(head);
-            ResponseHead parsed = parser.Next();
+            HttpResponseHead parsed = parser.Next();
             Console.ReadKey();
         }
 
@@ -81,7 +116,7 @@ namespace CSSockets
             RequestHeadSerializer serializer = new RequestHeadSerializer();
             RequestHeadParser parser = new RequestHeadParser();
             serializer.Pipe(parser);
-            RequestHead head = new RequestHead
+            HttpRequestHead head = new HttpRequestHead
             {
                 Method = "GET",
                 Query = new Query("/relay/servers"),
@@ -91,7 +126,7 @@ namespace CSSockets
             head.Headers.Set("way", "intraconnect");
             head.Headers.Set("cookie", "ga=GA.17.1.19.230148074");
             serializer.Write(head);
-            RequestHead parsed = parser.Next();
+            HttpRequestHead parsed = parser.Next();
             Console.ReadKey();
             serializer.End();
             parser.End();
@@ -106,11 +141,11 @@ Host: test-host.com
 Paramecium: Aleksa
 ";
             byte[] data = Encoding.ASCII.GetBytes(s);
-            Console.WriteLine("{0} {1}", parser.WriteWithoutOverflow(data), data.Length);
+            Console.WriteLine("{0} {1}", parser.WriteSafe(data), data.Length);
             Console.WriteLine(parser.Ended);
             if (!parser.Ended)
             {
-                RequestHead head = parser.Next();
+                HttpRequestHead head = parser.Next();
                 Console.WriteLine("{0} {1} {2}", head.Method, head.Query, head.Version);
             }
             
@@ -166,7 +201,7 @@ Paramecium: Aleksa
 
         static void HeadersTest(string[] args)
         {
-            Headers headers = new Headers();
+            HeaderCollection headers = new HeaderCollection();
             headers["Date"] = "Test";
             headers["Pebnis"] = 1.ToString();
             Console.ReadKey();

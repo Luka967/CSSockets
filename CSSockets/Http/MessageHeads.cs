@@ -7,40 +7,43 @@ namespace CSSockets.Http
     abstract public class HttpHead
     {
         public Version Version { get; internal set; }
-        public Headers Headers { get; internal set; }
-    }
+        public HeaderCollection Headers { get; internal set; }
 
-    sealed public class RequestHead : HttpHead
-    {
-        public string Method { get; internal set; }
-        public Query Query { get; internal set; }
-
-        public RequestHead()
+        public HttpHead()
         {
-            Query = null;
+            Headers = new HeaderCollection();
             Version = null;
-            Headers = new Headers();
         }
     }
 
-    sealed public class ResponseHead : HttpHead
+    sealed public class HttpRequestHead : HttpHead
+    {
+        private string _Method;
+        public string Method { get => _Method; internal set => _Method = value.ToUpperInvariant(); }
+        public Query Query { get; internal set; }
+
+        public HttpRequestHead() : base()
+        {
+            _Method = null;
+            Query = null;
+        }
+    }
+
+    sealed public class HttpResponseHead : HttpHead
     {
         public ushort StatusCode { internal get; set; }
         public string StatusDescription { internal get; set; }
 
-        public ResponseHead()
+        public HttpResponseHead() : base()
         {
             StatusCode = 0;
             StatusDescription = null;
-            Version = null;
-            Headers = new Headers();
         }
-        public ResponseHead(Version version)
+        public HttpResponseHead(Version version) : base()
         {
             StatusCode = 200;
             StatusDescription = "OK";
             Version = version;
-            Headers = new Headers();
         }
     }
 }

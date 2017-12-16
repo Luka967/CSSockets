@@ -16,9 +16,9 @@ namespace CSSockets.Http
         abstract public void Write(T head);
     }
 
-    sealed public class RequestHeadSerializer : HeadSerializer<RequestHead>
+    sealed public class RequestHeadSerializer : HeadSerializer<HttpRequestHead>
     {
-        public override void Write(RequestHead head)
+        public override void Write(HttpRequestHead head)
         {
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Method + WHITESPACE + head.Query + WHITESPACE + head.Version + CRLF);
@@ -29,9 +29,9 @@ namespace CSSockets.Http
         }
     }
 
-    sealed public class ResponseHeadSerializer : HeadSerializer<ResponseHead>
+    sealed public class ResponseHeadSerializer : HeadSerializer<HttpResponseHead>
     {
-        public override void Write(ResponseHead head)
+        public override void Write(HttpResponseHead head)
         {
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Version.ToString() + WHITESPACE + head.StatusCode + WHITESPACE + head.StatusDescription + CRLF);

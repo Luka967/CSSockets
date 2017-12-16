@@ -38,7 +38,7 @@ namespace CSSockets.Http
         public override byte[] Read() => Readable.Read();
         public override byte[] Read(int length) => Readable.Read(length);
         public override void Write(byte[] data) => ProcessData(data, true);
-        public int WriteWithoutOverflow(byte[] data) => ProcessData(data, false);
+        public int WriteSafe(byte[] data) => ProcessData(data, false);
 
         public override void End()
         {
@@ -58,7 +58,7 @@ namespace CSSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class RequestHeadParser : HeadParser<RequestHead>
+    public class RequestHeadParser : HeadParser<HttpRequestHead>
     {
         private RequestParserState State { get; set; } = RequestParserState.Method;
 
@@ -162,7 +162,7 @@ namespace CSSockets.Http
         HeaderLf = 7,
         Lf = 8
     }
-    public class ResponseHeadParser : HeadParser<ResponseHead>
+    public class ResponseHeadParser : HeadParser<HttpResponseHead>
     {
         private ResponseParserState State { get; set; } = ResponseParserState.Version;
 

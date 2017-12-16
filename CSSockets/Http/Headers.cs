@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Text;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
@@ -16,7 +16,7 @@ namespace CSSockets.Http
             Value = value;
         }
     }
-    sealed public class Headers
+    sealed public class HeaderCollection : IEnumerable<Header>
     {
         public static HashSet<string> DuplicatesIgnored = new HashSet<string>()
             { "age", "authorization", "content-length", "content-type", "etag", "expires",
@@ -26,11 +26,18 @@ namespace CSSockets.Http
         private StringDictionary List { get; } = new StringDictionary();
         private List<string> HeadersAdded { get; } = new List<string>();
         public int Count => HeadersAdded.Count;
+        public string LastHeaderName => HeadersAdded.Count == 0 ? null : HeadersAdded[HeadersAdded.Count - 1];
+
+        public HeaderCollection() { }
+        public HeaderCollection(IEnumerable<Header> collection)
+        {
+            foreach (Header header in collection) Add(header);
+        }
+
+        public void Add(Header header) => this[header.Name] = header.Value;
 
         public string Get(string name) => List[name.ToLower()];
         public string GetHeaderName(int index) => HeadersAdded[index];
-        public string GetLastHeaderName() =>
-            HeadersAdded.Count == 0 ? null : HeadersAdded[HeadersAdded.Count - 1];
         public IReadOnlyList<Header> AsCollection()
         {
             List<Header> list = new List<Header>();
@@ -59,6 +66,9 @@ namespace CSSockets.Http
             List.Remove(name);
             HeadersAdded.Remove(name);
         }
+
+        public IEnumerator<Header> GetEnumerator() => AsCollection().GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => AsCollection().GetEnumerator();
 
         public string this[string headerName]
         {

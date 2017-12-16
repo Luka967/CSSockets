@@ -25,10 +25,10 @@ Implementations:
     - [X] Request head
     - [X] Response head
   - [ ] Body parsing
-    - [ ] Binary
-    - [ ] Chunked
-    - [ ] Compressed binary
-    - [ ] Compressed chunked
+    - [X] Binary
+    - [X] Chunked
+    - [ ] Compressed binary - Should work, need a test
+    - [ ] Compressed chunked - Should work, need a test
   - [ ] Body serializing
     - [ ] Binary
     - [ ] Chunked

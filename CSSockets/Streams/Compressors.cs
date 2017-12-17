@@ -109,11 +109,13 @@ namespace CSSockets.Streams
                 Cstream.Write(data, 0, data.Length);
                 Cstream.Position = 0;
                 int len;
-                while ((len = Caccessor.Read(Cbuffer, 0, Cbuffer.Length)) > 0)
+                len = Caccessor.Read(Cbuffer, 0, Cbuffer.Length);
+                while (len > 0)
                 {
                     byte[] spliced = new byte[len];
                     Buffer.BlockCopy(Cbuffer, 0, spliced, 0, len);
                     Bwrite(spliced);
+                    len = Caccessor.Read(Cbuffer, 0, Cbuffer.Length);
                 }
             }
         }

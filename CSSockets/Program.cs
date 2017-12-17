@@ -17,10 +17,39 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            BodyParserTest(args);
+            RequestBodyParseTest(args);
         }
 
-        static void BodyParserTest(string[] args)
+        static void RequestBodyParseTest(string[] args)
+        {
+            // binary uncompressed
+            HttpRequestHead request = new HttpRequestHead()
+            {
+                Method = "POST",
+                Headers = new HeaderCollection()
+                {
+                    ["Transfer-Encoding"] = "chunked, deflate",
+                },
+                Query = new Query("/"),
+                Version = new Http.Version(1, 1)
+            };
+
+            BodySerializer serializer = new BodySerializer();
+            BodyParser parser = new BodyParser();
+
+            serializer.SetFor(request);
+            parser.SetFor(request);
+
+            serializer.Pipe(parser);
+            serializer.Write(Encoding.ASCII.GetBytes("Test420"));
+            serializer.End();
+
+            Console.WriteLine("parser data: {0}", Encoding.ASCII.GetString(parser.Read()));
+            parser.End();
+            Console.ReadKey();
+        }
+
+        static void BodyParserChunkedTest(string[] args)
         {
             HttpRequestHead request = new HttpRequestHead()
             {
@@ -33,7 +62,7 @@ namespace CSSockets
                 Version = new Http.Version(1, 1)
             };
             BodyParser bodyParser = new BodyParser();
-            bodyParser.TrySetFor(request);
+            bodyParser.SetFor(request);
             RawUnifiedDuplex sdf = new RawUnifiedDuplex();
             sdf.Pipe(bodyParser);
             sdf.Write(Encoding.ASCII.GetBytes("4\r\nTest\r\n0\r\nRandom-Header: 420\r\n\r\n"));
@@ -41,22 +70,44 @@ namespace CSSockets
             Console.ReadKey();
         }
 
-        static void BodyParserEncodingDetectionTest(string[] args)
+        static void BodyParserBinaryCompressedTest(string[] args)
         {
             HttpRequestHead request = new HttpRequestHead()
             {
                 Method = "GET",
                 Headers = new HeaderCollection()
                 {
-                    new Header("Content-Encoding", "chunked"),
-                    new Header("Content-Encoding", "deflate")
+                    ["Content-Length"] = "9",
+                    ["Content-Encoding"] = "deflate"
                 },
                 Query = new Query("/"),
                 Version = new Http.Version(1, 1)
             };
             BodyParser bodyParser = new BodyParser();
-            bool gotIt = bodyParser.TrySetFor(request);
-            Console.WriteLine(gotIt);
+            bodyParser.SetFor(request);
+            DeflateCompressor sdf = new DeflateCompressor(CompressionLevel.Optimal);
+            sdf.Pipe(bodyParser);
+            sdf.Write(Encoding.ASCII.GetBytes("Test420"));
+            sdf.End();
+            Console.WriteLine(bodyParser.IncomingBuffered);
+            Console.WriteLine(Encoding.ASCII.GetString(bodyParser.Read()));
+            Console.ReadKey();
+        }
+
+        static void BodyDetectionTest(string[] args)
+        {
+            HttpResponseHead request = new HttpResponseHead()
+            {
+                StatusCode = 200,
+                StatusDescription = "OK",
+                Headers = new HeaderCollection()
+                {
+                    ["Content-Length"] = "60"
+                },
+                Version = new Http.Version(1, 1)
+            };
+            BodyType? bodyType = BodyType.TryDetectFor(request);
+            Console.WriteLine(bodyType);
             Console.ReadKey();
         }
 
@@ -201,9 +252,12 @@ Paramecium: Aleksa
 
         static void HeadersTest(string[] args)
         {
-            HeaderCollection headers = new HeaderCollection();
-            headers["Date"] = "Test";
-            headers["Pebnis"] = 1.ToString();
+            // c# impresses me every time
+            HeaderCollection headers = new HeaderCollection
+            {
+                ["Date"] = "Test",
+                ["Pebnis"] = 1.ToString()
+            };
             Console.ReadKey();
         }
 

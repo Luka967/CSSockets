@@ -24,16 +24,16 @@ Implementations:
   - [X] Head serializing
     - [X] Request head
     - [X] Response head
-  - [ ] Body parsing
+  - [X] Body parsing
     - [X] Binary
     - [X] Chunked
-    - [ ] Compressed binary - Should work, need a test
-    - [ ] Compressed chunked - Should work, need a test
-  - [ ] Body serializing
-    - [ ] Binary
-    - [ ] Chunked
-    - [ ] Compressed binary
-    - [ ] Compressed chunked
+    - [X] Compressed binary
+    - [X] Compressed chunked
+  - [X] Body serializing
+    - [X] Binary
+    - [X] Chunked
+    - [X] Compressed binary
+    - [X] Compressed chunked
   - [ ] Request handling
   - [ ] Response handling
   - [ ] HTTP connections

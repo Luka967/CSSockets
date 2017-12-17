@@ -146,7 +146,12 @@ namespace CSSockets.Http
                 }
             }
             if (writeExcess)
-                Bwrite(data, i, data.Length - i);
+            {
+                int len = data.Length - i;
+                byte[] sliced = new byte[len];
+                Buffer.BlockCopy(data, i, sliced, 0, len);
+                Bwrite(sliced);
+            }
             return i;
         }
     }
@@ -250,7 +255,12 @@ namespace CSSockets.Http
                 }
             }
             if (writeExcess)
-                Bwrite(data, i, data.Length - i);
+            {
+                int len = data.Length - i;
+                byte[] sliced = new byte[len];
+                Buffer.BlockCopy(data, i, sliced, 0, len);
+                Bwrite(sliced);
+            }
             return i;
         }
     }

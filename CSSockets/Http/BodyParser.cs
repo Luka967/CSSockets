@@ -37,51 +37,13 @@ namespace CSSockets.Http
         public bool TrySetFor(HttpHead head)
         {
             ThrowIfEnded();
-            // partial of RFC 7320's 3.3.3 is used
-            TransferEncoding transfer = TransferEncoding.Raw;
-            ContentEncoding content = ContentEncoding.Binary;
-            int contentLen = -1;
-            if (head.Headers["Content-Length"] != null)
-            {
-                if (!int.TryParse(head.Headers["Content-Length"], out int len))
-                    return false;
-                contentLen = len;
-            }
-            // does Transfer-Encoding actually have priority?
-            string joined = (head.Headers["Transfer-Encoding"] ?? "") + (head.Headers["Content-Encoding"] ?? "");
-            if (joined == "") { Reset(transfer, content, contentLen); return true; }
-            string[] split = joined.Split(',');
-            for (int i = 0; i < split.Length; i++)
-            {
-                switch (split[i].Trim())
-                {
-                    case "chunked":
-                        if (contentLen != -1) return false; // 3.3.3.3
-                        transfer = TransferEncoding.Chunked;
-                        break;
-                    case "gzip":
-                        if (content != ContentEncoding.Binary) return false; // multiple compression algorithms
-                        content = ContentEncoding.Gzip;
-                        break;
-                    case "deflate":
-                        if (content != ContentEncoding.Binary) return false; // multiple compression algorithms
-                        content = ContentEncoding.Deflate;
-                        break;
-                    case "compress":
-                        return false; // not implemented
-                    default: return false; // unknown encoding
-                }
-            }
-            Reset(transfer, content, contentLen);
-            return true;
-        }
-        public void SetFor(HttpHead head)
-        {
-            if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
-        }
+            BodyType? bodyType = BodyType.TryDetectFor(head);
+            if (bodyType == null) return false;
 
-        private void Reset(TransferEncoding transfer, ContentEncoding content = ContentEncoding.Unknown, int contentLength = -1)
-        {
+            ContentEncoding content = bodyType.Value.ContentEncoding;
+            TransferEncoding transfer = bodyType.Value.TransferEncoding;
+            int contentLength = bodyType.Value.ContentLength;
+
             if (IsSet)
             {
                 ContentTransform.End();
@@ -110,11 +72,16 @@ namespace CSSockets.Http
                     case ContentEncoding.Binary: ContentTransform = new RawUnifiedDuplex(); break;
                     case ContentEncoding.Gzip: ContentTransform = new GzipDecompressor(); break;
                     case ContentEncoding.Deflate: ContentTransform = new DeflateDecompressor(); break;
-                    case ContentEncoding.Compress: throw new Exception("Got Compress, an unimplemented compression, as content encoding");
-                    default: throw new Exception("Got Unknown as content encoding");
+                    case ContentEncoding.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
+                    default: throw new ArgumentException("Got Unknown as content encoding");
                 }
             }
             IsSet = true;
+            return true;
+        }
+        public void SetFor(HttpHead head)
+        {
+            if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
         }
 
         private int ProcessData(byte[] data, bool writeExcess)
@@ -133,7 +100,13 @@ namespace CSSockets.Http
                         i += len;
                         CurrentReadBytes += len;
                         ContentTransform.Write(data);
-                        Readable.Write(ContentTransform.Read());
+                        if (ContentTransform.Buffered > 0)
+                            Readable.Write(ContentTransform.Read());
+                        if (CurrentReadBytes == ContentLength)
+                        {
+                            State = BodyParserState.Dormant;
+                            break;
+                        }
                         break;
                     case BodyParserState.Chunked_Length:
                         c = (char)data[i++];

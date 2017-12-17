@@ -1,11 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace CSSockets.Http
+﻿namespace CSSockets.Http
 {
-    internal static class BodyDetector
+    internal struct BodyType
     {
+        public int ContentLength { get; }
+        public TransferEncoding TransferEncoding { get; }
+        public ContentEncoding ContentEncoding { get; }
+
+        public BodyType(int contentLength, TransferEncoding transferEncoding, ContentEncoding contentEncoding) : this()
+        {
+            ContentLength = contentLength;
+            TransferEncoding = transferEncoding;
+            ContentEncoding = contentEncoding;
+        }
+
         public static BodyType? TryDetectFor(HttpHead head)
         {
             // RFC 7320's 3.3.3 is used
@@ -22,7 +29,7 @@ namespace CSSockets.Http
             string joined = (head.Headers["Transfer-Encoding"] ?? "") + (head.Headers["Content-Encoding"] ?? "");
             if (joined == "")
             {
-                if (contentLen != -1 && head is HttpRequestHead)
+                if (contentLen == -1 && head is HttpRequestHead)
                     // 3.3.3.6
                     return new BodyType(-1, TransferEncoding.None, ContentEncoding.Unknown);
                 return new BodyType(contentLen, transfer, content);
@@ -52,19 +59,7 @@ namespace CSSockets.Http
             }
             return new BodyType(contentLen, transfer, content);
         }
-    }
 
-    internal struct BodyType
-    {
-        public int ContentLength { get; }
-        public TransferEncoding TransferEncoding { get; }
-        public ContentEncoding ContentEncoding { get; }
-
-        public BodyType(int contentLength, TransferEncoding transferEncoding, ContentEncoding contentEncoding) : this()
-        {
-            ContentLength = contentLength;
-            TransferEncoding = transferEncoding;
-            ContentEncoding = contentEncoding;
-        }
+        public override string ToString() => string.Format("{0} {1} (content length: {2})", TransferEncoding, ContentEncoding, ContentLength);
     }
 }

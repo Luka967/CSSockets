@@ -20,6 +20,7 @@ namespace CSSockets.Http
     {
         public override void Write(HttpRequestHead head)
         {
+            ThrowIfEnded();
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Method + WHITESPACE + head.Query + WHITESPACE + head.Version + CRLF);
             foreach (Header header in head.Headers.AsCollection())
@@ -33,6 +34,7 @@ namespace CSSockets.Http
     {
         public override void Write(HttpResponseHead head)
         {
+            ThrowIfEnded();
             StringBuilder builder = new StringBuilder();
             builder.Append(head.Version.ToString() + WHITESPACE + head.StatusCode + WHITESPACE + head.StatusDescription + CRLF);
             foreach (Header header in head.Headers.AsCollection())

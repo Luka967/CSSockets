@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace CSSockets.Http
+﻿namespace CSSockets.Http
 {
     abstract public class HttpHead
     {
-        public Version Version { get; internal set; }
-        public HeaderCollection Headers { get; internal set; }
+        public Version Version { get; set; }
+        public HeaderCollection Headers { get; set; }
 
         public HttpHead()
         {
@@ -19,8 +15,8 @@ namespace CSSockets.Http
     sealed public class HttpRequestHead : HttpHead
     {
         private string _Method;
-        public string Method { get => _Method; internal set => _Method = value.ToUpperInvariant(); }
-        public Query Query { get; internal set; }
+        public string Method { get => _Method; set => _Method = value.ToUpperInvariant(); }
+        public Query Query { get; set; }
 
         public HttpRequestHead() : base()
         {
@@ -31,8 +27,8 @@ namespace CSSockets.Http
 
     sealed public class HttpResponseHead : HttpHead
     {
-        public ushort StatusCode { internal get; set; }
-        public string StatusDescription { internal get; set; }
+        public ushort StatusCode { get; set; }
+        public string StatusDescription { get; set; }
 
         public HttpResponseHead() : base()
         {

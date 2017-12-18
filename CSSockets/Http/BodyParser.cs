@@ -25,6 +25,7 @@ namespace CSSockets.Http
         public UnifiedDuplex ContentTransform { get; private set; } = null;
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
         public ContentEncoding ContentEncoding { get; private set; } = ContentEncoding.Unknown;
+        public event ControlHandler OnEnd;
 
         public int ContentLength { get; set; } = -1; // -1 = unknown, 0 = none, 1+ = has body
         public int CurrentReadBytes { get; set; } = 0;
@@ -105,6 +106,7 @@ namespace CSSockets.Http
                         if (CurrentReadBytes == ContentLength)
                         {
                             State = BodyParserState.Dormant;
+                            OnEnd?.Invoke();
                             break;
                         }
                         break;
@@ -163,6 +165,7 @@ namespace CSSockets.Http
                         c = (char)data[i++];
                         if (c != LF) { End(); return -1; }
                         State = BodyParserState.Dormant;
+                        OnEnd?.Invoke();
                         ContentLength = CurrentReadBytes;
                         break;
                     default: throw new InvalidOperationException("ProcessData cannot execute on Dormant state");

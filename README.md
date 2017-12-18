@@ -34,12 +34,12 @@ Implementations:
     - [X] Chunked
     - [X] Compressed binary
     - [X] Compressed chunked
-  - [ ] Request handling
-  - [ ] Response handling
-  - [ ] HTTP connections
+  - [X] Request handling
+  - [X] Response handling
+  - [X] HTTP connections
     - [ ] Client-side connection
-    - [ ] Server-side connection
-  - [ ] Support for custom upgrading
+    - [X] Server-side connection
+  - [X] Support for custom upgrading
   - [ ] HTTP listener
 - [ ] WebSockets
   - [ ] Message parsing

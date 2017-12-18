@@ -34,6 +34,7 @@ namespace CSSockets.Tcp
         public TcpSocketState State { get; private set; }
         public bool AllowHalfOpen { get; set; }
         public Socket Base { get; }
+        public IPAddress RemoteAddress { get; private set; }
 
         public event TcpSocketControlHandler OnOpen;
         public event TcpExceptionHandler OnError;
@@ -50,6 +51,22 @@ namespace CSSockets.Tcp
             Base = socket;
             if (Base.Connected) BeginOps();
             else State = TcpSocketState.Closed;
+        }
+
+        private void UpdateRemoteAddress()
+        {
+            if (State == TcpSocketState.Open)
+            {
+                if (Base.RemoteEndPoint is IPEndPoint)
+                    RemoteAddress = (Base.RemoteEndPoint as IPEndPoint).Address;
+                else if (Base.RemoteEndPoint is DnsEndPoint)
+                {
+                    IPAddress[] addresses = Dns.GetHostAddresses((Base.RemoteEndPoint as DnsEndPoint).Host);
+                    if (addresses.Length == 0) RemoteAddress = null;
+                    else RemoteAddress = addresses[0];
+                }
+            }
+            else RemoteAddress = null;
         }
 
         private void OnConnect(IAsyncResult ar)
@@ -75,6 +92,7 @@ namespace CSSockets.Tcp
         private void BeginOps()
         {
             State = TcpSocketState.Open;
+            UpdateRemoteAddress();
             ThreadPool.QueueUserWorkItem(RecvLoop);
             ThreadPool.QueueUserWorkItem(SendLoop);
             OnOpen?.Invoke();
@@ -141,13 +159,17 @@ namespace CSSockets.Tcp
         }
         protected override void EndReadable()
         {
-            SetClosing();
-            Base.Shutdown(SocketShutdown.Receive);
+            if (State != TcpSocketState.Closed)
+            {
+                SetClosing();
+                Base.Shutdown(SocketShutdown.Receive);
+            }
             base.EndReadable();
         }
         protected override void EndWritable()
         {
-            Base.Shutdown(SocketShutdown.Send);
+            if (State != TcpSocketState.Closed)
+                Base.Shutdown(SocketShutdown.Send);
             base.EndWritable();
         }
         private void EndWithError(SocketError error)
@@ -171,6 +193,23 @@ namespace CSSockets.Tcp
                     break;
                 case TcpSocketState.Closing:
                     throw new SocketException((int)SocketError.Disconnecting);
+            }
+        }
+
+        public void Terminate()
+        {
+            switch (State)
+            {
+                case TcpSocketState.Closed:
+                case TcpSocketState.Opening:
+                    throw new SocketException((int)SocketError.NotConnected);
+                case TcpSocketState.Open:
+                    AllowHalfOpen = false;
+                    State = TcpSocketState.Closed;
+                    Base.Dispose();
+                    break;
+                case TcpSocketState.Closing:
+                    throw new SocketException((int)SocketError.NotConnected);
             }
         }
 

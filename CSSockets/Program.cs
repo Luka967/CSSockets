@@ -17,7 +17,43 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            RequestBodyParseTest(args);
+            ServerConnectionTest(args);
+        }
+        
+        static void ServerConnectionTest(string[] args)
+        {
+            TcpListener listener = new TcpListener();
+            TcpSocket client = new TcpSocket();
+            TcpSocket server = null;
+            listener.Bind(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
+            listener.OnConnection += (_server) =>
+            {
+                server = _server;
+                Console.WriteLine("SERVER OPEN");
+                _server.OnData += (data) => Console.WriteLine("SERVER {0}", data.ToBase16String());
+                HttpServerConnection conn = new HttpServerConnection(_server);
+                conn.OnMessage = (_req, _res) =>
+                {
+                    HttpClientRequest req = _req as HttpClientRequest;
+                    HttpServerResponse res = _res as HttpServerResponse;
+                    res.SetHead(200, "OK");
+                    res.End();
+                };
+                server.OnClose += () => Console.WriteLine("SERVER CLOSED");
+            };
+            listener.Start();
+
+            client.OnOpen += () =>
+            {
+                Console.WriteLine("CLIENT OPEN");
+                Thread.Sleep(2000);
+                client.Write(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\n\r\nTest"));
+            };
+            client.OnData += (data) => Console.WriteLine("CLIENT {0}", data.ToBase16String());
+            client.OnError += (e) => Console.WriteLine("CLIENT ERROR {0}", e);
+            client.OnClose += () => Console.WriteLine("CLIENT CLOSED");
+            client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
+            Console.ReadKey();
         }
 
         static void RequestBodyParseTest(string[] args)
@@ -186,18 +222,18 @@ namespace CSSockets
         static void RequestParserTest(string[] args)
         {
             RequestHeadParser parser = new RequestHeadParser();
-            string s =
-@"GET /teastgsdfgdrgd rg HTTP/1.1
-Host: test-host.com
-Paramecium: Aleksa
-";
+            string s = "GET /teastgsdfgdrgd HTTP/1.1\r\nHost: test-host.com\r\nParamecium: Aleksa\r\n\r\n";
             byte[] data = Encoding.ASCII.GetBytes(s);
-            Console.WriteLine("{0} {1}", parser.WriteSafe(data), data.Length);
+            int index = parser.WriteSafe(data);
+            Console.WriteLine("{0} {1}", index, data.Length);
             Console.WriteLine(parser.Ended);
             if (!parser.Ended)
             {
                 HttpRequestHead head = parser.Next();
                 Console.WriteLine("{0} {1} {2}", head.Method, head.Query, head.Version);
+                for (int i = 0; i < head.Headers.Count; i++)
+                    Console.WriteLine("{0}: {1}", head.Headers.GetHeaderName(i), head.Headers[i]);
+                Console.WriteLine("excess: {0}", s.Substring(index));
             }
             
             Console.ReadKey();

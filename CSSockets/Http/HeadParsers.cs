@@ -31,7 +31,7 @@ namespace CSSockets.Http
         abstract protected int ProcessData(byte[] data, bool writeExcess);
 
         protected const char WHITESPACE = ' ';
-        protected const char EQUALS = '=';
+        protected const char COLON = ':';
         protected const char CR = '\r';
         protected const char LF = '\n';
 
@@ -114,7 +114,7 @@ namespace CSSockets.Http
                         break;
                     case RequestParserState.HeaderName:
                         if (c == CR) State = RequestParserState.Lf;
-                        else if (c != EQUALS) StringQueue.Append(c);
+                        else if (c != COLON) StringQueue.Append(c);
                         else
                         {
                             StringQueue.New();
@@ -223,7 +223,7 @@ namespace CSSockets.Http
                         break;
                     case ResponseParserState.HeaderName:
                         if (c == CR) State = ResponseParserState.Lf;
-                        else if (c != EQUALS) StringQueue.Append(c);
+                        else if (c != COLON) StringQueue.Append(c);
                         else
                         {
                             StringQueue.New();

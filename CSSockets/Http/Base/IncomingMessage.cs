@@ -1,5 +1,5 @@
-﻿using System;
-using CSSockets.Streams;
+﻿using CSSockets.Streams;
+using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Base
 {
@@ -44,7 +44,7 @@ namespace CSSockets.Http.Base
         }
 
         // head accessors
-        public Version HttpVersion => Head.Version;
+        public HttpVersion HttpVersion => Head.Version;
         public string this[string name] => Head.Headers[name];
 
         // ending HttpIncomingMessage terminates the connection

@@ -78,6 +78,9 @@ namespace CSSockets.Http.Reference
                     // unpipe serializers
                     HeadSerializer.Unpipe();
                     BodySerializer.Unpipe();
+
+                    // message processed
+                    CurrentMessage = (null, null);
                 }
             }
             catch (ObjectDisposedException) { /* socket got disposed */ }

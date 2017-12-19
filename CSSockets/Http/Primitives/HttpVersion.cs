@@ -39,11 +39,11 @@ namespace CSSockets.Http.Primitives
         public override string ToString()
             => "HTTP/" + Major + "." + Minor;
 
-        public static implicit operator System.Version(HttpVersion version)
-            => new System.Version(version.Major, version.Minor);
-        public static implicit operator HttpVersion(System.Version version)
+        public static implicit operator Version(HttpVersion version)
+            => new Version(version.Major, version.Minor);
+        public static implicit operator HttpVersion(Version version)
         {
-            if (version.Revision != 0 || version.Build != 0 ||
+            if (version.Revision != -1 || version.Build != -1 ||
                 version.Major < 0 || version.Minor < 0 ||
                 version.Major > 255 || version.Minor > 255)
                 throw new InvalidOperationException("Cannot convert version " + version + " to an HTTP version");

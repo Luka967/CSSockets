@@ -3,7 +3,7 @@ using System.Text;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Primitives
 {
     sealed public class StringQueue
     {

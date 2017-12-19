@@ -1,23 +1,25 @@
 ﻿using System;
 using System.Net;
 using CSSockets.Tcp;
+using CSSockets.Http.Base;
+using CSSockets.Http.Primitives;
 using System.Collections.Generic;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Reference
 {
-    public delegate void ServerRequestHandler(HttpClientRequest req, HttpServerResponse res);
-    public delegate void ServerConnectionHandler(HttpServerConnection newConnection);
-    public class HttpListener
+    public delegate void ServerRequestHandler(ClientRequest req, ServerResponse res);
+    public delegate void ServerConnectionHandler(ServerConnection newConnection);
+    public class Listener
     {
         public EndPoint ListenEndpoint { get; }
-        public Path ListenPath { get; }
+        public HttpPath ListenPath { get; }
         public TcpListener Base { get; }
         public bool Listening => Base.Listening;
 
-        public HashSet<HttpServerConnection> Connections { get; }
+        public HashSet<ServerConnection> Connections { get; }
         private object Sync { get; } = new object();
         private ServerRequestHandler handler = (req, res) => req.End();
-        private HttpMessageHandler<HttpRequestHead, HttpResponseHead> transformer;
+        private HttpMessageHandler<RequestHead, ResponseHead> transformer;
 
         public event ServerConnectionHandler OnConnection;
         public ServerRequestHandler OnRequest
@@ -30,28 +32,28 @@ namespace CSSockets.Http
             }
         }
 
-        private HttpListener()
+        private Listener()
         {
             transformer = (_req, _res) =>
             {
-                HttpClientRequest req = _req as HttpClientRequest;
-                HttpServerResponse res = _res as HttpServerResponse;
+                ClientRequest req = _req as ClientRequest;
+                ServerResponse res = _res as ServerResponse;
                 if (!req.Query.Path.Contains(ListenPath)) return;
                 handler(req, res);
             };
             Base = new TcpListener();
             Base.OnConnection += OnNewSocket;
-            Connections = new HashSet<HttpServerConnection>();
+            Connections = new HashSet<ServerConnection>();
         }
 
-        public HttpListener(EndPoint listenEndpoint) : this()
+        public Listener(EndPoint listenEndpoint) : this()
         {
             ListenEndpoint = listenEndpoint;
             ListenPath = "/";
             Base.Bind(listenEndpoint);
         }
 
-        public HttpListener(EndPoint listenEndpoint, Path listenPath) : this()
+        public Listener(EndPoint listenEndpoint, HttpPath listenPath) : this()
         {
             ListenEndpoint = listenEndpoint;
             ListenPath = listenPath;
@@ -60,11 +62,11 @@ namespace CSSockets.Http
 
         private void OnNewSocket(TcpSocket socket)
         {
-            HttpServerConnection conn = new HttpServerConnection(socket);
+            ServerConnection conn = new ServerConnection(socket);
             lock (Sync) Connections.Add(conn);
             conn.OnEnd += () => { lock (Sync) Connections.Remove(conn); };
             OnConnection?.Invoke(conn);
-            conn.OnMessage = (req, res) => handler(req as HttpClientRequest, res as HttpServerResponse);
+            conn.OnMessage = (req, res) => handler(req as ClientRequest, res as ServerResponse);
         }
 
         public void Start()
@@ -77,9 +79,9 @@ namespace CSSockets.Http
             Base.Stop();
             lock (Sync)
             {
-                HttpServerConnection[] enumSafeList = new HttpServerConnection[Connections.Count];
+                ServerConnection[] enumSafeList = new ServerConnection[Connections.Count];
                 Connections.CopyTo(enumSafeList);
-                foreach (HttpServerConnection conn in enumSafeList)
+                foreach (ServerConnection conn in enumSafeList)
                     conn.Terminate();
             }
         }

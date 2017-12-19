@@ -1,10 +1,9 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Primitives
 {
     sealed public class Header
     {

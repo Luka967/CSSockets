@@ -3,11 +3,13 @@ using System.IO;
 using System.Net;
 using System.Text;
 using CSSockets.Tcp;
-using CSSockets.Http;
 using CSSockets.Base;
 using System.Threading;
 using CSSockets.Streams;
+using CSSockets.Http.Base;
 using System.IO.Compression;
+using CSSockets.Http.Reference;
+using CSSockets.Http.Primitives;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 
@@ -25,7 +27,7 @@ namespace CSSockets
             Lapwatch w = new Lapwatch();
             w.Start();
 
-            Http.HttpListener listener = new Http.HttpListener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 80), "/");
+            Listener listener = new Listener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 80), "/");
             listener.OnConnection += (conn) =>
             {
                 Console.WriteLine("{0:F4} external connection opened", w.Elapsed.TotalMilliseconds);
@@ -35,7 +37,10 @@ namespace CSSockets
             listener.OnRequest = (req, res) =>
             {
                 Console.WriteLine("{0:F4} request", w.Elapsed.TotalMilliseconds);
-                res.SetHead(200, "OK", new Header("Transfer-Encoding", "chunked"), new Header("Content-Encoding", "gzip"), new Header("Server", "CSSockets"));
+                res.SetHead(200, "OK");
+                res["Transfer-Encoding"] = "chunked";
+                res["Content-Encoding"] = "gzip";
+                res["Server"] = "CSSockets";
                 res.Write("This is ");
                 res.Write("a chunked body ");
                 res.Write("transferred with the ");
@@ -65,11 +70,11 @@ namespace CSSockets
             {
                 server = _server;
                 Console.WriteLine("SERVER OPEN");
-                HttpServerConnection conn = new HttpServerConnection(_server);
+                ServerConnection conn = new ServerConnection(_server);
                 conn.OnMessage = (_req, _res) =>
                 {
-                    HttpClientRequest req = _req as HttpClientRequest;
-                    HttpServerResponse res = _res as HttpServerResponse;
+                    ClientRequest req = _req as ClientRequest;
+                    ServerResponse res = _res as ServerResponse;
                     res.SetHead(200, "OK");
                     res.End();
                 };
@@ -92,7 +97,7 @@ namespace CSSockets
         static void RequestBodyParseTest(string[] args)
         {
             // binary uncompressed
-            HttpRequestHead request = new HttpRequestHead()
+            RequestHead request = new RequestHead()
             {
                 Method = "POST",
                 Headers = new HeaderCollection()
@@ -100,7 +105,7 @@ namespace CSSockets
                     ["Transfer-Encoding"] = "chunked, deflate",
                 },
                 Query = new Query("/"),
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
 
             BodySerializer serializer = new BodySerializer();
@@ -120,7 +125,7 @@ namespace CSSockets
 
         static void BodyParserChunkedTest(string[] args)
         {
-            HttpRequestHead request = new HttpRequestHead()
+            RequestHead request = new RequestHead()
             {
                 Method = "GET",
                 Headers = new HeaderCollection()
@@ -128,7 +133,7 @@ namespace CSSockets
                     new Header("Transfer-Encoding", "chunked"),
                 },
                 Query = new Query("/"),
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
             BodyParser bodyParser = new BodyParser();
             bodyParser.SetFor(request);
@@ -141,7 +146,7 @@ namespace CSSockets
 
         static void BodyParserBinaryCompressedTest(string[] args)
         {
-            HttpRequestHead request = new HttpRequestHead()
+            RequestHead request = new RequestHead()
             {
                 Method = "GET",
                 Headers = new HeaderCollection()
@@ -150,7 +155,7 @@ namespace CSSockets
                     ["Content-Encoding"] = "deflate"
                 },
                 Query = new Query("/"),
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
             BodyParser bodyParser = new BodyParser();
             bodyParser.SetFor(request);
@@ -165,7 +170,7 @@ namespace CSSockets
 
         static void BodyDetectionTest(string[] args)
         {
-            HttpResponseHead request = new HttpResponseHead()
+            ResponseHead request = new ResponseHead()
             {
                 StatusCode = 200,
                 StatusDescription = "OK",
@@ -173,7 +178,7 @@ namespace CSSockets
                 {
                     ["Content-Length"] = "60"
                 },
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
             BodyType? bodyType = BodyType.TryDetectFor(request);
             Console.WriteLine(bodyType);
@@ -216,18 +221,18 @@ namespace CSSockets
             ResponseHeadSerializer serializer = new ResponseHeadSerializer();
             ResponseHeadParser parser = new ResponseHeadParser();
             serializer.Pipe(parser);
-            HttpResponseHead head = new HttpResponseHead
+            ResponseHead head = new ResponseHead
             {
                 // imaginary status
                 StatusCode = 239,
                 StatusDescription = "Probably Processed",
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
             head.Headers.Set("probability", "0.7");
             head.Headers.Set("app_expect", "200");
             head.Headers.Set("app_expect", "400");
             serializer.Write(head);
-            HttpResponseHead parsed = parser.Next();
+            ResponseHead parsed = parser.Next();
             Console.ReadKey();
         }
 
@@ -236,17 +241,17 @@ namespace CSSockets
             RequestHeadSerializer serializer = new RequestHeadSerializer();
             RequestHeadParser parser = new RequestHeadParser();
             serializer.Pipe(parser);
-            HttpRequestHead head = new HttpRequestHead
+            RequestHead head = new RequestHead
             {
                 Method = "GET",
                 Query = new Query("/relay/servers"),
-                Version = new Http.Version(1, 1)
+                Version = new Http.Primitives.HttpVersion(1, 1)
             };
             head.Headers.Set("host", "google.com");
             head.Headers.Set("way", "intraconnect");
             head.Headers.Set("cookie", "ga=GA.17.1.19.230148074");
             serializer.Write(head);
-            HttpRequestHead parsed = parser.Next();
+            RequestHead parsed = parser.Next();
             Console.ReadKey();
             serializer.End();
             parser.End();
@@ -262,7 +267,7 @@ namespace CSSockets
             Console.WriteLine(parser.Ended);
             if (!parser.Ended)
             {
-                HttpRequestHead head = parser.Next();
+                RequestHead head = parser.Next();
                 Console.WriteLine("{0} {1} {2}", head.Method, head.Query, head.Version);
                 for (int i = 0; i < head.Headers.Count; i++)
                     Console.WriteLine("{0}: {1}", head.Headers.GetHeaderName(i), head.Headers[i]);
@@ -302,7 +307,7 @@ namespace CSSockets
             collection.Set("abc", "aniogjsdf");
             Console.WriteLine(collection);
 
-            Http.Path path = new Http.Path("/abcd/test");
+            HttpPath path = new HttpPath("/abcd/test");
             Console.WriteLine("{0} {1} {2}", path, path.Directory, path.Entry);
             path.Initialize("/test/123");
             Console.WriteLine("{0} {1} {2}", path, path.Directory, path.Entry);

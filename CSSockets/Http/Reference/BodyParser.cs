@@ -1,8 +1,10 @@
 ﻿using System;
 using CSSockets.Streams;
+using CSSockets.Http.Base;
 using System.Globalization;
+using CSSockets.Http.Primitives;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Reference
 {
     internal enum BodyParserState : sbyte
     {
@@ -35,7 +37,7 @@ namespace CSSockets.Http
         private bool IsSet { get; set; } = false;
         private BodyParserState State { get; set; } = BodyParserState.Dormant;
 
-        public bool TrySetFor(HttpHead head)
+        public bool TrySetFor(MessageHead head)
         {
             ThrowIfEnded();
             BodyType? bodyType = BodyType.TryDetectFor(head);
@@ -72,7 +74,7 @@ namespace CSSockets.Http
             IsSet = true;
             return true;
         }
-        public void SetFor(HttpHead head)
+        public void SetFor(MessageHead head)
         {
             if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
         }

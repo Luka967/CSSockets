@@ -1,13 +1,13 @@
 ﻿using System;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Primitives
 {
-    sealed public class Version
+    sealed public class HttpVersion
     {
         public byte Major { get; set; }
         public byte Minor { get; set; }
 
-        public static bool TryParse(string str, out Version result)
+        public static bool TryParse(string str, out HttpVersion result)
         {
             result = null;
             if (str.Length < 5 || !str.StartsWith("HTTP/"))
@@ -20,17 +20,17 @@ namespace CSSockets.Http
                 return false;
             if (!byte.TryParse(split[1], out byte _2))
                 return false;
-            result = new Version(_1, _2);
+            result = new HttpVersion(_1, _2);
             return true;
         }
-        public static Version Parse(string str)
+        public static HttpVersion Parse(string str)
         {
-            if (!TryParse(str, out Version result))
+            if (!TryParse(str, out HttpVersion result))
                 throw new ArgumentException("Invalid string format");
             return result;
         }
        
-        public Version(byte major, byte minor)
+        public HttpVersion(byte major, byte minor)
         {
             Major = major;
             Minor = minor;
@@ -39,15 +39,15 @@ namespace CSSockets.Http
         public override string ToString()
             => "HTTP/" + Major + "." + Minor;
 
-        public static implicit operator System.Version(Version version)
+        public static implicit operator System.Version(HttpVersion version)
             => new System.Version(version.Major, version.Minor);
-        public static implicit operator Version(System.Version version)
+        public static implicit operator HttpVersion(System.Version version)
         {
             if (version.Revision != 0 || version.Build != 0 ||
                 version.Major < 0 || version.Minor < 0 ||
                 version.Major > 255 || version.Minor > 255)
                 throw new InvalidOperationException("Cannot convert version " + version + " to an HTTP version");
-            return new Version((byte)version.Major, (byte)version.Minor);
+            return new HttpVersion((byte)version.Major, (byte)version.Minor);
         }
     }
 }

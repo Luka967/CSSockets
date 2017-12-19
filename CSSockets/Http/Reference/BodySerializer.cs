@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Text;
 using CSSockets.Streams;
-using System.Globalization;
+using CSSockets.Http.Base;
 using System.IO.Compression;
+using CSSockets.Http.Primitives;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Reference
 {
     sealed public class BodySerializer : UnifiedDuplex
     {
@@ -22,7 +23,7 @@ namespace CSSockets.Http
 
         private bool IsSet { get; set; } = false;
 
-        public bool TrySetFor(HttpHead head)
+        public bool TrySetFor(MessageHead head)
         {
             ThrowIfEnded();
             BodyType? bodyType = BodyType.TryDetectFor(head);
@@ -48,7 +49,7 @@ namespace CSSockets.Http
             }
             return true;
         }
-        public void SetFor(HttpHead head)
+        public void SetFor(MessageHead head)
         {
             if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
         }

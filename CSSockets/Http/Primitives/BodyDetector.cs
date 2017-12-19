@@ -1,6 +1,9 @@
-﻿namespace CSSockets.Http
+﻿using CSSockets.Http.Base;
+using CSSockets.Http.Reference;
+
+namespace CSSockets.Http.Primitives
 {
-    internal struct BodyType
+    public struct BodyType
     {
         public int ContentLength { get; }
         public TransferEncoding TransferEncoding { get; }
@@ -13,7 +16,7 @@
             ContentEncoding = contentEncoding;
         }
 
-        public static BodyType? TryDetectFor(HttpHead head)
+        public static BodyType? TryDetectFor(MessageHead head)
         {
             // RFC 7320's 3.3.3 is used
             TransferEncoding transfer = TransferEncoding.Raw;
@@ -30,7 +33,7 @@
             if (head.Headers["Content-Encoding"] != null) joined += ", " + head.Headers["Content-Encoding"];
             if (joined == "")
             {
-                if (contentLen == -1 && head is HttpRequestHead)
+                if (contentLen == -1 && head is RequestHead)
                     // 3.3.3.6
                     return new BodyType(-1, TransferEncoding.None, ContentEncoding.Unknown);
                 return new BodyType(contentLen, transfer, content);

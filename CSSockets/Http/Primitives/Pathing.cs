@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
-namespace CSSockets.Http
+namespace CSSockets.Http.Primitives
 {
     internal static class StringJoiner
     {
@@ -93,7 +93,7 @@ namespace CSSockets.Http
 
         public override string ToString() => Tokens.Count == 0 ? "" : "?" + Tokens.Join("&");
     }
-    sealed public class Path
+    sealed public class HttpPath
     {
         private enum TraverseResult : byte
         {
@@ -177,25 +177,25 @@ namespace CSSockets.Http
         public void Traverse(string path = "/") => CheckTraverseResult(InternalTraverse(path));
         public bool TryTraverse(string path = "/") => InternalTraverse(path) == TraverseResult.Success;
 
-        public bool Contains(Path other)
+        public bool Contains(HttpPath other)
         {
             int checkLen = Math.Min(Location.Count, other.Location.Count);
             for (int i = 0; i < checkLen; i++) if (Location[i] != other.Location[i]) return false;
             return checkLen == Location.Count;
         }
 
-        public Path() => Initialize();
-        public Path(Path other) => Initialize(other.FullPath);
-        public Path(string path) => Initialize(path);
+        public HttpPath() => Initialize();
+        public HttpPath(HttpPath other) => Initialize(other.FullPath);
+        public HttpPath(string path) => Initialize(path);
 
         public override string ToString() => FullPath;
 
-        public static implicit operator Path(string value) => new Path(value);
-        public static implicit operator string(Path value) => value.FullPath;
+        public static implicit operator HttpPath(string value) => new HttpPath(value);
+        public static implicit operator string(HttpPath value) => value.FullPath;
     }
     sealed public class Query
     {
-        public Path Path { get; set; }
+        public HttpPath Path { get; set; }
         public string Hash { get; set; }
         public SearchTokenList Searches { get; set; }
         public string Search
@@ -224,7 +224,7 @@ namespace CSSockets.Http
                     return false;
                 temp.Searches = searches;
             }
-            Path tempPath = new Path();
+            HttpPath tempPath = new HttpPath();
             if (!tempPath.TryInitialize(splitForSearch[0]))
                 return false;
             temp.Path = tempPath;
@@ -244,9 +244,9 @@ namespace CSSockets.Http
             Hash = hash;
             Search = searchString;
         }
-        public Query(Path path, string hash, SearchTokenList searches)
+        public Query(HttpPath path, string hash, SearchTokenList searches)
         {
-            Path = new Path(path.FullPath);
+            Path = new HttpPath(path.FullPath);
             Hash = hash;
             Searches = searches;
         }

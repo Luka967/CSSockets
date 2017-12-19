@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace CSSockets.Http
+﻿namespace CSSockets.Http.Primitives
 {
     // this distinguishing is definetly on the transport layer
     public enum TransferEncoding : sbyte

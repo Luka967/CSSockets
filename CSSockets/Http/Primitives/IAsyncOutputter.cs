@@ -1,8 +1,4 @@
-﻿using System;
-using System.Text;
-using System.Collections.Generic;
-
-namespace CSSockets.Http
+﻿namespace CSSockets.Http.Primitives
 {
     public delegate void AsyncCreationHandler<T>(T item);
     public interface IAsyncOutputter<T>

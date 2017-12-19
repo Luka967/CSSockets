@@ -206,8 +206,6 @@ namespace CSSockets.Streams
         public void Unpipe()
         {
             ThrowIfEnded();
-            if (PipedTo == null)
-                throw new InvalidOperationException("Was not piped in the first place");
             PipedTo = null;
         }
 

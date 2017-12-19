@@ -155,13 +155,13 @@ namespace CSSockets.Http
             set { ThrowIfHeadSent(); Head.StatusDescription = value; }
         }
 
-        public void SetHead(ushort statusCode, string statusDescription, IEnumerable<Header> headers = null)
+        public void SetHead(ushort statusCode, string statusDescription, params Header[] headers)
         {
             ThrowIfHeadSent();
             Head.StatusCode = statusCode;
             Head.StatusDescription = statusDescription;
-            if (headers != null) foreach (Header h in headers)
-                    Head.Headers[h.Name] = h.Value;
+            foreach (Header h in headers)
+                Head.Headers[h.Name] = h.Value;
         }
     }
 }

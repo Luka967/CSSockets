@@ -26,7 +26,8 @@
                 contentLen = len;
             }
             // does Transfer-Encoding actually have priority?
-            string joined = (head.Headers["Transfer-Encoding"] ?? "") + (head.Headers["Content-Encoding"] ?? "");
+            string joined = (head.Headers["Transfer-Encoding"] ?? "");
+            if (head.Headers["Content-Encoding"] != null) joined += ", " + head.Headers["Content-Encoding"];
             if (joined == "")
             {
                 if (contentLen == -1 && head is HttpRequestHead)
@@ -45,11 +46,13 @@
                         transfer = TransferEncoding.Chunked;
                         break;
                     case "gzip":
-                        if (content != ContentEncoding.Binary) return null; // multiple compression algorithms
+                        if (content != ContentEncoding.Binary)
+                            return null; // multiple compression algorithms
                         content = ContentEncoding.Gzip;
                         break;
                     case "deflate":
-                        if (content != ContentEncoding.Binary) return null; // multiple compression algorithms
+                        if (content != ContentEncoding.Binary)
+                            return null; // multiple compression algorithms
                         content = ContentEncoding.Deflate;
                         break;
                     case "compress":

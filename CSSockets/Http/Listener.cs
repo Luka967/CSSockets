@@ -75,7 +75,13 @@ namespace CSSockets.Http
         public void Stop()
         {
             Base.Stop();
-            lock (Sync) foreach (HttpServerConnection conn in Connections) conn.Terminate();
+            lock (Sync)
+            {
+                HttpServerConnection[] enumSafeList = new HttpServerConnection[Connections.Count];
+                Connections.CopyTo(enumSafeList);
+                foreach (HttpServerConnection conn in enumSafeList)
+                    conn.Terminate();
+            }
         }
     }
 }

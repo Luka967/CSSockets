@@ -25,19 +25,22 @@ namespace CSSockets
             Lapwatch w = new Lapwatch();
             w.Start();
 
-            Http.HttpListener listener = new Http.HttpListener(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 80), "/");
+            Http.HttpListener listener = new Http.HttpListener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 80), "/");
             listener.OnConnection += (conn) =>
             {
                 Console.WriteLine("{0:F4} external connection opened", w.Elapsed.TotalMilliseconds);
                 conn.Base.OnClose += () => Console.WriteLine("{0:F4} external tcp closed", w.Elapsed.TotalMilliseconds);
                 conn.OnEnd += () => Console.WriteLine("{0:F4} external http closed", w.Elapsed.TotalMilliseconds);
             };
-
             listener.OnRequest = (req, res) =>
             {
                 Console.WriteLine("{0:F4} request", w.Elapsed.TotalMilliseconds);
-                res.SetHead(200, "OK", new Header[] { new Header("Content-Length", "4") });
-                res.Write("Test");
+                res.SetHead(200, "OK", new Header("Transfer-Encoding", "chunked"), new Header("Content-Encoding", "gzip"), new Header("Server", "CSSockets"));
+                res.Write("This is ");
+                res.Write("a chunked body ");
+                res.Write("transferred with the ");
+                res.Write("\r\nGzip compression ");
+                res.Write("algorithm.\r\n\r\nMakan is cool.");
                 res.End();
                 Console.WriteLine("{0:F4} request finished", w.Elapsed.TotalMilliseconds);
             };

@@ -47,6 +47,11 @@ namespace CSSockets.Http
 
         virtual protected void End()
         {
+            HeadParser.Unpipe();
+            BodyParser.Unpipe();
+            if (!Base.ReadableEnded) Base.Unpipe();
+            HeadSerializer.Unpipe();
+            BodySerializer.Unpipe();
             HeadParser.End();
             HeadSerializer.End();
             BodyParser.End();
@@ -124,17 +129,20 @@ namespace CSSockets.Http
                     if (req.Cancelled) break; // terminated
                     if (!res.Ended) res.EndWait.WaitOne(); // wait for end
 
+                    // end body buffers
+                    if (!req.Ended) req.BodyBuffer.End();
+                    if (!res.Ended) res.BodyBuffer.End();
+
+                    // finish body
+                    BodySerializer.Finish();
+
                     // unpipe serializers
                     HeadSerializer.Unpipe();
                     BodySerializer.Unpipe();
                 }
             }
-            // socket got disposed
-            catch (ObjectDisposedException) { }
-            finally
-            {
-                if (!HeadParser.Ended) End();
-            }
+            catch (ObjectDisposedException) { /* socket got disposed */ }
+            if (!HeadParser.Ended) End();
         }
     }
 }

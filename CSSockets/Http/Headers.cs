@@ -46,13 +46,13 @@ namespace CSSockets.Http
             return new ReadOnlyCollection<Header>(list);
         }
 
-        public void Set(string name, string value)
+        public void Set(string name, string value, bool overwrite = false)
         {
             name = name.ToLower();
             string prevValue = Get(name);
             if (prevValue != null && DuplicatesIgnored.Contains(name))
                 return;
-            else if (prevValue != null)
+            else if (prevValue != null && !overwrite)
                 List[name] = prevValue + ", " + value.Trim();
             else
             {

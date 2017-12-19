@@ -42,8 +42,7 @@ namespace CSSockets.Streams
             {
                 ThrowIfEnded();
                 _OnData += value;
-                if (!Paused && PipedTo != null && Buffered > 0)
-                    Bhandle(Bread());
+                BtestNewPathing();
             }
             remove
             {
@@ -55,6 +54,7 @@ namespace CSSockets.Streams
         protected void Bhandle(byte[] data)
         {
             ThrowIfEnded();
+            if (data == null) return;
             ProcessedBytes += data.LongLength;
             if (Paused) Bwrite(data);
             else if (PipedTo != null)
@@ -62,6 +62,13 @@ namespace CSSockets.Streams
             else if (_OnData != null)
                 _OnData(data);
             else Bwrite(data);
+        }
+
+        protected void BtestNewPathing()
+        {
+            if (Paused || Buffered == 0) return;
+            if (PipedTo != null || _OnData != null)
+                Bhandle(Bread());
         }
 
         protected void Bwrite(byte[] data)
@@ -177,6 +184,7 @@ namespace CSSockets.Streams
         {
             ThrowIfEnded();
             PipedTo = to;
+            BtestNewPathing();
         }
         virtual public void Unpipe(IReadable from)
         {

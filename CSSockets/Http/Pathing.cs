@@ -177,11 +177,21 @@ namespace CSSockets.Http
         public void Traverse(string path = "/") => CheckTraverseResult(InternalTraverse(path));
         public bool TryTraverse(string path = "/") => InternalTraverse(path) == TraverseResult.Success;
 
+        public bool Contains(Path other)
+        {
+            int checkLen = Math.Min(Location.Count, other.Location.Count);
+            for (int i = 0; i < checkLen; i++) if (Location[i] != other.Location[i]) return false;
+            return checkLen == Location.Count;
+        }
+
         public Path() => Initialize();
         public Path(Path other) => Initialize(other.FullPath);
         public Path(string path) => Initialize(path);
 
         public override string ToString() => FullPath;
+
+        public static implicit operator Path(string value) => new Path(value);
+        public static implicit operator string(Path value) => value.FullPath;
     }
     sealed public class Query
     {

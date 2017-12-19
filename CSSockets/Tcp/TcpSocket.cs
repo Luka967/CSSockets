@@ -156,6 +156,7 @@ namespace CSSockets.Tcp
             State = TcpSocketState.Closed;
             Base.Close();
             OnClose?.Invoke();
+            UpdateRemoteAddress();
         }
         protected override void EndReadable()
         {
@@ -178,6 +179,7 @@ namespace CSSockets.Tcp
             OnClose?.Invoke();
             EndReadable();
             EndWritable();
+            UpdateRemoteAddress();
         }
         public override void End()
         {
@@ -202,14 +204,14 @@ namespace CSSockets.Tcp
             {
                 case TcpSocketState.Closed:
                 case TcpSocketState.Opening:
+                case TcpSocketState.Closing:
                     throw new SocketException((int)SocketError.NotConnected);
                 case TcpSocketState.Open:
                     AllowHalfOpen = false;
                     State = TcpSocketState.Closed;
                     Base.Dispose();
+                    OnClose?.Invoke();
                     break;
-                case TcpSocketState.Closing:
-                    throw new SocketException((int)SocketError.NotConnected);
             }
         }
 

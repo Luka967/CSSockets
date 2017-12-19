@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace CSSockets.Streams
+﻿namespace CSSockets.Streams
 {
     sealed public class WrappedReadable : IBufferedReadable
     {
@@ -20,6 +16,8 @@ namespace CSSockets.Streams
             remove => Base.OnData -= value;
         }
 
+        public WrappedReadable(IBufferedDuplex _) => Base = _;
+
         public void End() => Base.End();
         public void Pipe(IWritable to) => Base.Pipe(to);
         public byte[] Read() => Base.Read();
@@ -36,6 +34,8 @@ namespace CSSockets.Streams
         public int OutgoingBuffered => Base.OutgoingBuffered;
         public bool Ended => Base.Ended;
         public bool Corked => Base.Corked;
+
+        public WrappedWritble(IBufferedDuplex _) => Base = _;
 
         public void Cork() => Base.Cork();
         public void End() => Base.End();

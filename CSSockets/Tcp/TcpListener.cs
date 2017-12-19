@@ -40,6 +40,7 @@ namespace CSSockets.Tcp
         {
             if (!Listening)
                 throw new InvalidOperationException("TcpSocketListener isn't listening");
+            Listening = false;
             Base.Close();
         }
 

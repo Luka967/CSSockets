@@ -6,11 +6,12 @@ using CSSockets.Streams;
 
 namespace CSSockets.Http
 {
-    abstract public class HeadParser<T> : UnifiedDuplex, IAsyncOutputter<T>
+    abstract public class HeadParser<T> : UnifiedDuplex, IQueueableAsyncOutputter<T>
         where T : HttpHead, new()
     {
         public event AsyncCreationHandler<T> OnOutput;
         protected Queue<T> HeadQueue { get; } = new Queue<T>();
+        public int QueuedCount => HeadQueue.Count;
         protected void PushIncoming()
         {
             if (OnOutput != null) OnOutput(Incoming);

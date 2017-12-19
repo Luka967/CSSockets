@@ -35,9 +35,9 @@ namespace CSSockets.Base
             ThrowIfEnded();
             bool got = false;
             item = default(T);
+            GetterBlock.WaitOne();
             lock (GetterLock)
             {
-                GetterBlock.WaitOne();
                 if (!Ended)
                 {
                     item = List[0];

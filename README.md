@@ -40,7 +40,7 @@ Implementations:
     - [ ] Client-side connection
     - [X] Server-side connection
   - [X] Support for custom upgrading
-  - [ ] HTTP listener
+  - [X] HTTP listener
 - [ ] WebSockets
   - [ ] Message parsing
   - [ ] Message serialization

@@ -45,15 +45,7 @@ namespace CSSockets.Http
             TransferEncoding transfer = bodyType.Value.TransferEncoding;
             int contentLength = bodyType.Value.ContentLength;
 
-            if (IsSet)
-            {
-                ContentTransform.End();
-                ContentTransform = null;
-                StringQueue = null;
-                ContentLength = -1;
-                chunkLen = chunkIndex = CurrentReadBytes = 0;
-                State = BodyParserState.Dormant;
-            }
+            if (IsSet) Reset();
             TransferEncoding = transfer;
             if (transfer == TransferEncoding.Raw)
             {
@@ -181,6 +173,22 @@ namespace CSSockets.Http
             return i;
         }
 
+        public void Reset()
+        {
+            if (TransferEncoding != TransferEncoding.None)
+            {
+                ContentTransform.End();
+                ContentTransform = null;
+            }
+            StringQueue = null;
+            chunkLen = chunkIndex = CurrentReadBytes = 0;
+            State = BodyParserState.Dormant;
+            TransferEncoding = TransferEncoding.None;
+            ContentEncoding = ContentEncoding.Unknown;
+            ContentLength = -1;
+            IsSet = false;
+        }
+
         public byte[] ReadExcess() => Writable.Read();
         public byte[] ReadExcess(int length) => Writable.Read(length);
         public override byte[] Read() => Readable.Read();
@@ -191,7 +199,7 @@ namespace CSSockets.Http
         public override void End()
         {
             base.End();
-            if (IsSet) ContentTransform.End();
+            if (IsSet) Reset();
         }
     }
 }

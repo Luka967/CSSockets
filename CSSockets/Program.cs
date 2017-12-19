@@ -17,7 +17,39 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            ServerConnectionTest(args);
+            ExternalListenerTest(args);
+        }
+
+        static void ExternalListenerTest(string[] args)
+        {
+            Lapwatch w = new Lapwatch();
+            w.Start();
+
+            Http.HttpListener listener = new Http.HttpListener(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 80), "/");
+            listener.OnConnection += (conn) =>
+            {
+                Console.WriteLine("{0:F4} external connection opened", w.Elapsed.TotalMilliseconds);
+                conn.Base.OnClose += () => Console.WriteLine("{0:F4} external tcp closed", w.Elapsed.TotalMilliseconds);
+                conn.OnEnd += () => Console.WriteLine("{0:F4} external http closed", w.Elapsed.TotalMilliseconds);
+            };
+
+            listener.OnRequest = (req, res) =>
+            {
+                Console.WriteLine("{0:F4} request", w.Elapsed.TotalMilliseconds);
+                res.SetHead(200, "OK", new Header[] { new Header("Content-Length", "4") });
+                res.Write("Test");
+                res.End();
+                Console.WriteLine("{0:F4} request finished", w.Elapsed.TotalMilliseconds);
+            };
+            Console.WriteLine("{0:F4} opening", w.Elapsed.TotalMilliseconds);
+            listener.Start();
+            Console.WriteLine("{0:F4} opened", w.Elapsed.TotalMilliseconds);
+            Console.ReadKey();
+            listener.Stop();
+            Console.WriteLine("{0:F4} closing", w.Elapsed.TotalMilliseconds);
+            Console.ReadKey();
+            Console.WriteLine("{0:F4} closed", w.Elapsed.TotalMilliseconds);
+            w.Stop();
         }
         
         static void ServerConnectionTest(string[] args)
@@ -30,7 +62,6 @@ namespace CSSockets
             {
                 server = _server;
                 Console.WriteLine("SERVER OPEN");
-                _server.OnData += (data) => Console.WriteLine("SERVER {0}", data.ToBase16String());
                 HttpServerConnection conn = new HttpServerConnection(_server);
                 conn.OnMessage = (_req, _res) =>
                 {
@@ -46,7 +77,6 @@ namespace CSSockets
             client.OnOpen += () =>
             {
                 Console.WriteLine("CLIENT OPEN");
-                Thread.Sleep(2000);
                 client.Write(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4\r\n\r\nTest"));
             };
             client.OnData += (data) => Console.WriteLine("CLIENT {0}", data.ToBase16String());

@@ -31,7 +31,7 @@ namespace CSSockets.Http
 
         public byte[] Read() => BodyBuffer.Read();
         public byte[] Read(int length) => BodyBuffer.Read(length);
-        #endregion
+#endregion
 
         protected Incoming Head { get; set; }
         public bool Cancelled { get; internal set; }
@@ -82,9 +82,13 @@ namespace CSSockets.Http
         public void Cork() => BodyBuffer.Pause();
         public void Uncork() => BodyBuffer.Resume();
 
-        public void Write(byte[] data) => BodyBuffer.Write(data);
+        public void Write(byte[] data)
+        {
+            if (!IsHeadSent) SendHead();
+            BodyBuffer.Write(data);
+        }
+        public void Write(string chunk) => Write(System.Text.Encoding.UTF8.GetBytes(chunk));
         public void Write(byte[] data, int offset, int length) => BodyBuffer.Write(data, offset, length);
-
 #endregion
 
         protected Outgoing Head { get; set; }

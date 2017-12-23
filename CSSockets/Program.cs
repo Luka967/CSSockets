@@ -7,6 +7,7 @@ using CSSockets.Base;
 using System.Threading;
 using CSSockets.Streams;
 using CSSockets.Http.Base;
+using CSSockets.WebSockets;
 using System.IO.Compression;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Primitives;
@@ -19,7 +20,16 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            ExternalListenerTest(args);
+            FrameParserTest(args);
+        }
+        
+        static void FrameParserTest(string[] args)
+        {
+            FrameParser parser = new FrameParser();
+            Frame test = new Frame(true, 2, true, new byte[800000], true, false, true);
+            parser.Write(test.Serialize());
+            Frame result = parser.Next();
+            Console.ReadKey();
         }
 
         static void ExternalListenerTest(string[] args)
@@ -53,10 +63,10 @@ namespace CSSockets
             listener.Start();
             Console.WriteLine("{0:F4} opened", w.Elapsed.TotalMilliseconds);
             Console.ReadKey();
-            listener.Stop();
             Console.WriteLine("{0:F4} closing", w.Elapsed.TotalMilliseconds);
-            Console.ReadKey();
+            listener.Stop();
             Console.WriteLine("{0:F4} closed", w.Elapsed.TotalMilliseconds);
+            Console.ReadKey();
             w.Stop();
         }
         

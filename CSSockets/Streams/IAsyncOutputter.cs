@@ -1,4 +1,4 @@
-﻿namespace CSSockets.Http.Primitives
+﻿namespace CSSockets.Streams
 {
     public delegate void AsyncCreationHandler<T>(T item);
     public interface IAsyncOutputter<T>

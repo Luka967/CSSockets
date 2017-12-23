@@ -20,7 +20,11 @@ namespace CSSockets.Streams
 
         abstract protected void HandleData(byte[] data);
 
-        abstract public void Write(byte[] data);
+        virtual public void Write(byte[] data)
+        {
+            if (Corked) Writable.Write(data);
+            else HandleData(data);
+        }
         virtual public void Write(byte[] data, int offset, int count)
         {
             byte[] sliced = new byte[count];

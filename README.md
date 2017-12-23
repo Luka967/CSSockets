@@ -42,8 +42,8 @@ Implementations:
   - [X] Support for custom upgrading
   - [X] HTTP listener
 - [ ] WebSockets
-  - [ ] Message parsing
-  - [ ] Message serialization
+  - [X] Message parsing
+  - [X] Message serialization
   - [ ] WebSocket connections
     - [ ] Client-side connection
     - [ ] Server-side connection

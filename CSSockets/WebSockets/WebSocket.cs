@@ -2,6 +2,7 @@
 using System.Text;
 using CSSockets.Tcp;
 using CSSockets.Streams;
+using CSSockets.Http.Reference;
 
 namespace CSSockets.WebSockets
 {
@@ -18,6 +19,7 @@ namespace CSSockets.WebSockets
         {
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
+        public RequestHead RequestHead { get; }
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -28,9 +30,10 @@ namespace CSSockets.WebSockets
         protected FrameParser FrameParser { get; }
         protected FrameMerger FrameMerger { get; }
 
-        protected WebSocket(TcpSocket socket, byte[] trail)
+        protected WebSocket(TcpSocket socket, RequestHead head, byte[] trail)
         {
             Base = socket;
+            RequestHead = head;
             FrameParser = new FrameParser();
             FrameMerger = new FrameMerger();
             FrameParser.OnOutput += OnIncomingFrame;
@@ -70,29 +73,10 @@ namespace CSSockets.WebSockets
             }
         }
 
-        virtual public void Cork()
-        {
-            ThrowIfNotOpen();
-            Base.Cork();
-        }
-
-        virtual public void Uncork()
-        {
-            ThrowIfNotOpen();
-            Base.Uncork();
-        }
-
-        virtual public void Pause()
-        {
-            ThrowIfNotOpen();
-            Base.Pause();
-        }
-
-        virtual public void Resume()
-        {
-            ThrowIfNotOpen();
-            Base.Resume();
-        }
+        virtual public void Cork() => Base.Cork();
+        virtual public void Uncork() => Base.Uncork();
+        virtual public void Pause() => Base.Pause();
+        virtual public void Resume() => Base.Resume();
 
         protected void InitiateClose(ushort code, string reason)
         {

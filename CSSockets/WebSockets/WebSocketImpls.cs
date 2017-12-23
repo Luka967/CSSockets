@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Text;
 using CSSockets.Tcp;
+using CSSockets.Http.Reference;
 
 namespace CSSockets.WebSockets
 {
     public class ServerWebSocket : WebSocket
     {
-        public ServerWebSocket(TcpSocket socket, byte[] trail) : base(socket, trail) { }
+        public ServerWebSocket(TcpSocket socket, RequestHead head, byte[] trail) : base(socket, head, trail) { }
 
         public override void Close(ushort code, string reason)
         {
@@ -29,7 +30,7 @@ namespace CSSockets.WebSockets
         protected override void AnswerClose(ushort code, string reason)
         {
             Send(new Frame(true, 8, false, BitConverter.GetBytes(code), false, false, false));
-            Base.End();
+            if (!Base.Ended) Base.End();
         }
         protected override void AnswerPing(byte[] data)
             => Send(new Frame(true, 10, false, data, false, false, false));
@@ -37,7 +38,7 @@ namespace CSSockets.WebSockets
 
     public class ClientWebSocket : WebSocket
     {
-        public ClientWebSocket(TcpSocket socket, byte[] trail) : base(socket, trail) { }
+        public ClientWebSocket(TcpSocket socket, RequestHead head, byte[] trail) : base(socket, head, trail) { }
 
         public override void Close(ushort code, string reason)
         {
@@ -60,7 +61,7 @@ namespace CSSockets.WebSockets
         protected override void AnswerClose(ushort code, string reason)
         {
             Send(new Frame(true, 8, true, BitConverter.GetBytes(code), false, false, false));
-            Base.End();
+            if (!Base.Ended) Base.End();
         }
         protected override void AnswerPing(byte[] data)
             => Send(new Frame(true, 10, true, data, false, false, false));

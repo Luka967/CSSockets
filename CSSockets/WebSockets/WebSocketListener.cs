@@ -86,7 +86,7 @@ namespace CSSockets.WebSockets
             res["Sec-WebSocket-Accept"] = str;
 
             byte[] trail = res.Upgrade();
-            WebSocket ws = new ServerWebSocket(req.Connection.Base, trail);
+            WebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head, trail);
             OnConnection?.Invoke(ws);
             ws.Base.Resume();
         }

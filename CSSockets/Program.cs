@@ -20,7 +20,23 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            WebSocketListenerTest(args);
+            WebSocketFramingTest(args);
+        }
+
+        static void WebSocketFramingTest(string[] args)
+        {
+            WebSocketListener listener = new WebSocketListener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 1000), "/");
+            listener.OnConnection += (ws) =>
+            {
+                ws.Send(new byte[125]);
+                ws.Send(new byte[126]);
+                ws.Send(new byte[127]);
+                ws.Send(new byte[128]);
+                ws.Send(new byte[32767]);
+                ws.Send(new byte[32768]);
+            };
+            listener.Start();
+            Console.ReadKey();
         }
 
         static void WebSocketListenerTest(string[] args)
@@ -45,7 +61,7 @@ namespace CSSockets
                 };
                 curr.OnPing += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
                 curr.OnPong += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
-                curr.OnClose += (code, reason) => Console.WriteLine("{0:F1} close {1}", w.Elapsed.TotalMilliseconds, code, reason);
+                curr.OnClose += (code, reason) => Console.WriteLine("{0:F1} close {1} {2}", w.Elapsed.TotalMilliseconds, code, reason);
             };
             Console.WriteLine("{0:F1} opening", w.Elapsed.TotalMilliseconds);
             listener.Start();

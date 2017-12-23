@@ -40,7 +40,7 @@ namespace CSSockets.WebSockets
 
         public byte[] Serialize()
         {
-            int payloadSerLen = PayloadLength > 65535 ? 8 : PayloadLength > 126 ? 2 : 0;
+            int payloadSerLen = PayloadLength >= 65536 ? 8 : PayloadLength >= 126 ? 2 : 0;
             long len = 2 + payloadSerLen + (Masked ? 4 : 0) + PayloadLength, index = 0;
             byte[] ret = new byte[len];
             ret[index++] = (byte)(Opcode + (FIN ? 128 : 0) + (RSV1 ? 64 : 0) + (RSV2 ? 32 : 0) + (RSV3 ? 16 : 0));
@@ -51,13 +51,19 @@ namespace CSSockets.WebSockets
                     break;
                 case 2:
                     ret[index++] = (byte)((Masked ? 128 : 0) + 126);
-                    ArrayCopy(BitConverter.GetBytes((ushort)Payload.LongLength), 0, ret, index, 2);
-                    index += 2;
+                    ret[index++] = (byte)((PayloadLength >> 8) & 255);
+                    ret[index++] = (byte)(PayloadLength & 255);
                     break;
                 case 8:
                     ret[index++] = (byte)((Masked ? 128 : 0) + 127);
-                    ArrayCopy(BitConverter.GetBytes((ulong)Payload.LongLength), 0, ret, index, 8);
-                    index += 8;
+                    ret[index++] = (byte)((PayloadLength >> 56) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 48) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 40) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 32) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 24) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 16) & 255);
+                    ret[index++] = (byte)((PayloadLength >> 8) & 255);
+                    ret[index++] = (byte)(PayloadLength & 255);
                     break;
             }
             if (Masked)

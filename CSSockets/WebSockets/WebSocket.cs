@@ -59,6 +59,7 @@ namespace CSSockets.WebSockets
                 case 1: OnString?.Invoke(Encoding.UTF8.GetString(message.Data)); break;
                 case 2: OnBinary?.Invoke(message.Data); break;
                 case 8:
+                    if (State != TcpSocketState.Open) break;
                     ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
                     string reason = Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2);
                     OnClose?.Invoke(code, reason);
@@ -93,7 +94,11 @@ namespace CSSockets.WebSockets
             Base.Resume();
         }
 
-        protected void InitiateClose() => Base.End();
+        protected void InitiateClose(ushort code, string reason)
+        {
+            Base.End();
+            OnClose?.Invoke(code, reason);
+        }
         protected void ForciblyClose()
         {
             Base.Terminate();

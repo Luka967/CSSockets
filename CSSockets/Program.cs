@@ -41,6 +41,7 @@ namespace CSSockets
                 {
                     Console.WriteLine("{0:F1} string {1}", w.Elapsed.TotalMilliseconds, data);
                     curr.Send("AYE MATE THIS WERKS");
+                    curr.Close(1000, "Yes bb");
                 };
                 curr.OnPing += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
                 curr.OnPong += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());

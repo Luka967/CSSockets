@@ -1,4 +1,5 @@
-﻿using CSSockets.Http.Base;
+﻿using CSSockets.Tcp;
+using CSSockets.Http.Base;
 using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Reference
@@ -35,6 +36,13 @@ namespace CSSockets.Http.Reference
             Head.StatusDescription = statusDescription;
             foreach (Header h in headers)
                 Head.Headers[h.Name] = h.Value;
+        }
+
+        public byte[] Upgrade()
+        {
+            byte[] trail = Connection.SetUpgrading();
+            End();
+            return trail;
         }
     }
 }

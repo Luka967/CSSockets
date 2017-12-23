@@ -20,7 +20,56 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            FrameParserTest(args);
+            WebSocketListenerTest(args);
+        }
+
+        static void WebSocketListenerTest(string[] args)
+        {
+            Lapwatch w = new Lapwatch();
+            w.Start();
+
+            Console.WriteLine("{0:F1} constructing", w.Elapsed.TotalMilliseconds);
+            WebSocketListener listener = new WebSocketListener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 420), "/");
+            WebSocket curr = null;
+            Console.WriteLine("{0:F1} constructed", w.Elapsed.TotalMilliseconds);
+            listener.OnConnection += (ws) =>
+            {
+                curr = ws;
+                Console.WriteLine("SERVER CONNECTION");
+                curr.OnBinary += (data) => Console.WriteLine("{0:F1} binary {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
+                curr.OnString += (data) =>
+                {
+                    Console.WriteLine("{0:F1} string {1}", w.Elapsed.TotalMilliseconds, data);
+                    curr.Send("AYE MATE THIS WERKS");
+                };
+                curr.OnPing += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
+                curr.OnPong += (data) => Console.WriteLine("{0:F1} ping {1}", w.Elapsed.TotalMilliseconds, data.ToBase16String());
+                curr.OnClose += (code, reason) => Console.WriteLine("{0:F1} close {1}", w.Elapsed.TotalMilliseconds, code, reason);
+            };
+            Console.WriteLine("{0:F1} opening", w.Elapsed.TotalMilliseconds);
+            listener.Start();
+            Console.WriteLine("{0:F1} opened", w.Elapsed.TotalMilliseconds);
+            Console.ReadKey();
+            if (curr.State == TcpSocketState.Open)
+            {
+                Console.WriteLine("buffered: {0}/{1}", curr.Base.IncomingBuffered, curr.Base.OutgoingBuffered);
+                Console.ReadKey();
+            }
+            Console.WriteLine("{0:F1} closing", w.Elapsed.TotalMilliseconds);
+            listener.Stop();
+            Console.WriteLine("{0:F1} closed", w.Elapsed.TotalMilliseconds);
+            Console.ReadKey();
+        }
+
+        static void WSHeaderParserTest(string[] args)
+        {
+            bool gotExt = ExtensionNegotiation.TryParse("mux; max-channels=4; flow-control, deflate-stream", out ExtensionNegotiation[] res1);
+            if (!gotExt) Console.WriteLine("Failed");
+            else Console.WriteLine(ExtensionNegotiation.Stringify(res1));
+            bool gotSubp = SubprotocolNegotiation.TryParseHeader("test1, test2", out string[] res2);
+            if (!gotExt) Console.WriteLine("Failed");
+            else Console.WriteLine(SubprotocolNegotiation.Stringify(res2));
+            Console.ReadKey();
         }
         
         static void FrameParserTest(string[] args)

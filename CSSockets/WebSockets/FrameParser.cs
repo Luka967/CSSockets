@@ -12,10 +12,10 @@ namespace CSSockets.WebSockets
         Mask = 3,
         Payload = 4
     }
-    class FrameParser : BaseWritable, IQueueableAsyncOutputter<Frame>
+    public class FrameParser : BaseWritable, IQueueableAsyncOutputter<Frame>
     {
         private Queue<Frame> FrameQueue { get; } = new Queue<Frame>();
-        public int QueuedCount => throw new System.NotImplementedException();
+        public int QueuedCount => FrameQueue.Count;
         public event AsyncCreationHandler<Frame> OnOutput;
         protected void PushIncoming()
         {

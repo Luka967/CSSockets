@@ -24,8 +24,8 @@ namespace CSSockets.Streams
             remove => Readable.OnData -= value;
         }
 
-        public void Pipe(IWritable to) => Readable.Pipe(to);
-        public void Unpipe() => Readable.Unpipe();
+        virtual public void Pipe(IWritable to) => Readable.Pipe(to);
+        virtual public void Unpipe() => Readable.Unpipe();
 
         abstract public byte[] Read();
         abstract public byte[] Read(int length);

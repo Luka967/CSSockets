@@ -44,9 +44,9 @@ Implementations:
 - [ ] WebSockets
   - [X] Message parsing
   - [X] Message serialization
-  - [ ] WebSocket connections
+  - [X] WebSocket connections
     - [ ] Client-side connection
-    - [ ] Server-side connection
+    - [X] Server-side connection
   - [ ] Support for custom extensions
     - Implement permessage-deflate?
 - HTTPS?

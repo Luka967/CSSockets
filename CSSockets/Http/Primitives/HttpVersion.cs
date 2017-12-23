@@ -49,5 +49,26 @@ namespace CSSockets.Http.Primitives
                 throw new InvalidOperationException("Cannot convert version " + version + " to an HTTP version");
             return new HttpVersion((byte)version.Major, (byte)version.Minor);
         }
+        public static implicit operator HttpVersion(string str) => Parse(str);
+        public static bool operator ==(HttpVersion a, HttpVersion b)
+        {
+            if (a is null && b is null) return true;
+            if (a is null || b is null) return false;
+            return a.Major == b.Major && a.Minor == b.Minor;
+        }
+        public static bool operator !=(HttpVersion a, HttpVersion b)
+        {
+            if (a is null && b is null) return false;
+            if (a is null || b is null) return true;
+            return a.Major != b.Major || a.Minor != b.Minor;
+        }
+        public override bool Equals(object obj)
+        {
+            if (obj is null) return false;
+            if (!(obj is HttpVersion)) return false;
+            HttpVersion obj_ = obj as HttpVersion;
+            return Major == obj_.Major && Minor == obj_.Minor;
+        }
+        public override int GetHashCode() => Major * 256 + Minor;
     }
 }

@@ -26,9 +26,9 @@ namespace CSSockets.Http.Base
         }
         public void Write(string chunk) => Write(System.Text.Encoding.UTF8.GetBytes(chunk));
         public void Write(byte[] data, int offset, int length) => BodyBuffer.Write(data, offset, length);
-#endregion
+        #endregion
 
-        protected Outgoing Head { get; set; }
+        public Outgoing Head { get; set; }
         public bool IsHeadSent { get; internal set; }
         public Connection<Incoming, Outgoing> Connection { get; }
         public event ControlHandler OnEnd;

@@ -29,9 +29,9 @@ namespace CSSockets.Http.Base
 
         public byte[] Read() => BodyBuffer.Read();
         public byte[] Read(int length) => BodyBuffer.Read(length);
-#endregion
+        #endregion
 
-        protected Incoming Head { get; set; }
+        public Incoming Head { get; set; }
         public bool Cancelled { get; internal set; }
         public Connection<Incoming, Outgoing> Connection { get; }
         public event ControlHandler OnEnd;

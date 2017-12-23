@@ -67,8 +67,7 @@ namespace CSSockets.Streams
         protected void BtestNewPathing()
         {
             if (Paused || Buffered == 0) return;
-            if (PipedTo != null || _OnData != null)
-                Bhandle(Bread());
+            Bhandle(Bread());
         }
 
         protected void Bwrite(byte[] data)
@@ -202,6 +201,7 @@ namespace CSSockets.Streams
                 Paused = false;
                 Bblock.Set();
             }
+            BtestNewPathing();
         }
         public void Unpipe()
         {

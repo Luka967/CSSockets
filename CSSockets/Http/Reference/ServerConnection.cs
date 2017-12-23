@@ -14,10 +14,6 @@ namespace CSSockets.Http.Reference
         {
             try
             {
-                // self-removing OnEnd for BodyParser
-                ControlHandler d = null;
-                d = () => { Base.Cork(); BodyParser.OnEnd -= d; };
-
                 while (!Terminating)
                 {
                     // HeadParser excess -> HeadParser
@@ -32,7 +28,7 @@ namespace CSSockets.Http.Reference
                     if (HeadParser.QueuedCount == 0)
                     {
                         // upcoming data -> HeadParser
-                        Base.Uncork();
+                        Base.Resume();
                         Base.Pipe(HeadParser);
                     }
                     RequestHead head = HeadParser.Next();
@@ -43,15 +39,16 @@ namespace CSSockets.Http.Reference
                     if (BodyParser.TransferEncoding != TransferEncoding.None)
                     {
                         // body exists
+                        bool bodyFinished = false;
+                        ControlHandler d = () => { Base.Pause(); bodyFinished = true; };
                         BodyParser.OnEnd += d;
-                        if (HeadParser.Buffered > 0)
-                            // HeadParser excess -> BodyParser
-                            BodyParser.Write(HeadParser.Read());
-                        if (BodyParser.TransferEncoding != TransferEncoding.None)
+                        // HeadParser excess -> BodyParser
+                        BodyParser.Write(HeadParser.Read());
+                        if (!bodyFinished)
                             // upcoming data -> BodyParser
                             Base.Pipe(BodyParser);
                     }
-                    else Base.Cork(); // no body
+                    else Base.Pause(); // no body
                     HeadSerializer.Pipe(Base);
                     BodySerializer.Pipe(Base);
 
@@ -81,6 +78,20 @@ namespace CSSockets.Http.Reference
 
                     // message processed
                     CurrentMessage = (null, null);
+
+                    // check for disconnection
+                    if (head.Headers["Connection"] == "close")
+                    {
+                        End();
+                        Base.End();
+                        break;
+                    }
+                    // check if upgrading
+                    if (Upgrading)
+                    {
+                        End();
+                        break;
+                    }
                 }
             }
             catch (ObjectDisposedException) { /* socket got disposed */ }

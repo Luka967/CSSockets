@@ -41,12 +41,12 @@ namespace CSSockets.Streams
             remove => Readable.OnData -= value;
         }
 
-        public void Pipe(IWritable to) => Readable.Pipe(to);
-        public void Unpipe() => Readable.Unpipe();
+        virtual public void Pipe(IWritable to) => Readable.Pipe(to);
+        virtual public void Unpipe() => Readable.Unpipe();
         virtual public void Unpipe(IReadable from)
         {
             if (from.PipedTo == this) from.Unpipe();
-            else throw new InvalidOperationException("This readable is not piped to this writable");
+            else throw new InvalidOperationException("Provided readable is not piped to this writable");
         }
 
         abstract public byte[] Read();

@@ -26,7 +26,7 @@ namespace CSSockets.Http.Reference
 
         public UnifiedDuplex ContentTransform { get; private set; } = null;
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
-        public ContentEncoding ContentEncoding { get; private set; } = ContentEncoding.Unknown;
+        public CompressionType ContentEncoding { get; private set; } = CompressionType.Unknown;
         public event ControlHandler OnEnd;
 
         public int ContentLength { get; set; } = -1; // -1 = unknown, 0 = none, 1+ = has body
@@ -43,7 +43,7 @@ namespace CSSockets.Http.Reference
             BodyType? bodyType = BodyType.TryDetectFor(head);
             if (bodyType == null) return false;
 
-            ContentEncoding content = bodyType.Value.ContentEncoding;
+            CompressionType compression = bodyType.Value.CompressionType;
             TransferEncoding transfer = bodyType.Value.TransferEncoding;
             int contentLength = bodyType.Value.ContentLength;
 
@@ -61,13 +61,13 @@ namespace CSSockets.Http.Reference
             }
             if (transfer != TransferEncoding.None)
             {
-                ContentEncoding = content;
-                switch (content)
+                ContentEncoding = compression;
+                switch (compression)
                 {
-                    case ContentEncoding.Binary: ContentTransform = new RawUnifiedDuplex(); break;
-                    case ContentEncoding.Gzip: ContentTransform = new GzipDecompressor(); break;
-                    case ContentEncoding.Deflate: ContentTransform = new DeflateDecompressor(); break;
-                    case ContentEncoding.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
+                    case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); break;
+                    case CompressionType.Gzip: ContentTransform = new GzipDecompressor(); break;
+                    case CompressionType.Deflate: ContentTransform = new DeflateDecompressor(); break;
+                    case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
                     default: throw new ArgumentException("Got Unknown as content encoding");
                 }
             }
@@ -186,7 +186,7 @@ namespace CSSockets.Http.Reference
             chunkLen = chunkIndex = CurrentReadBytes = 0;
             State = BodyParserState.Dormant;
             TransferEncoding = TransferEncoding.None;
-            ContentEncoding = ContentEncoding.Unknown;
+            ContentEncoding = CompressionType.Unknown;
             ContentLength = -1;
             IsSet = false;
         }

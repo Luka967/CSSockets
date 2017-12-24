@@ -20,7 +20,7 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            WebSocketFramingTest(args);
+            TcpSocketTerminateTest(args);
         }
 
         static void WebSocketFramingTest(string[] args)
@@ -408,6 +408,31 @@ namespace CSSockets
                 ["Date"] = "Test",
                 ["Pebnis"] = 1.ToString()
             };
+            Console.ReadKey();
+        }
+
+        static void TcpSocketTerminateTest(string[] args)
+        {
+            TcpListener listener = new TcpListener();
+            TcpSocket client = new TcpSocket(false);
+            TcpSocket server = null;
+            listener.Bind(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
+            listener.OnConnection += (_server) =>
+            {
+                server = _server;
+            };
+            client.OnOpen += () =>
+            {
+                while (server == null) ;
+                client.Terminate();
+                Console.WriteLine("{0} {1}", server.Base.Connected, server.State);
+                Thread.Sleep(1);
+                Console.WriteLine("{0} {1}", server.Base.Connected, server.State);
+                Thread.Sleep(1000);
+                Console.WriteLine("{0} {1}", server.Base.Connected, server.State);
+            };
+            listener.Start();
+            client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
             Console.ReadKey();
         }
 

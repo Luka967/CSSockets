@@ -35,6 +35,7 @@ namespace CSSockets.Tcp
         public bool AllowHalfOpen { get; set; }
         public Socket Base { get; }
         public IPAddress RemoteAddress { get; private set; }
+        private object SocketCloseLock { get; } = new object();
 
         public event TcpSocketControlHandler OnOpen;
         public event TcpExceptionHandler OnError;
@@ -100,11 +101,15 @@ namespace CSSockets.Tcp
 
         private void RecvLoop(object _)
         {
-            int bufSize = Base.ReceiveBufferSize;
-            byte[] buf = new byte[bufSize];
+            byte[] buf = new byte[65536];
             while (true)
             {
-                int len = Base.Receive(buf, 0, bufSize, SocketFlags.None, out SocketError code);
+                if (!Base.Connected)
+                {
+                    EndWithError(SocketError.ConnectionAborted);
+                    return;
+                }
+                int len = Base.Receive(buf, 0, 65536, SocketFlags.None, out SocketError code);
                 if (code == SocketError.Interrupted || len == 0)
                     break;
                 else if (code != SocketError.Success)
@@ -121,9 +126,10 @@ namespace CSSockets.Tcp
         {
             while (true)
             {
+                byte[] next;
                 if (Writable.Ended || (State == TcpSocketState.Closing && Writable.Buffered == 0))
                     break;
-                byte[] next = Writable.Read();
+                next = Writable.Read();
                 if (next == null)
                     break;
                 Base.Send(next, 0, next.Length, SocketFlags.None, out SocketError code);
@@ -160,18 +166,24 @@ namespace CSSockets.Tcp
         }
         protected override void EndReadable()
         {
-            if (State != TcpSocketState.Closed)
+            lock (SocketCloseLock)
             {
-                SetClosing();
-                Base.Shutdown(SocketShutdown.Receive);
+                if (State != TcpSocketState.Closed)
+                {
+                    SetClosing();
+                    Base.Shutdown(SocketShutdown.Receive);
+                }
+                base.EndReadable();
             }
-            base.EndReadable();
         }
         protected override void EndWritable()
         {
-            if (State != TcpSocketState.Closed)
-                Base.Shutdown(SocketShutdown.Send);
-            base.EndWritable();
+            lock (SocketCloseLock)
+            {
+                if (State != TcpSocketState.Closed)
+                    Base.Shutdown(SocketShutdown.Send);
+                base.EndWritable();
+            }
         }
         private void EndWithError(SocketError error)
         {

@@ -17,7 +17,7 @@ namespace CSSockets.Http.Reference
         public bool IsCompressing { get; private set; } = false;
         public CompressionLevel CompressionLevel { get; set; } = CompressionLevel.Optimal;
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
-        public ContentEncoding ContentEncoding { get; private set; } = ContentEncoding.Unknown;
+        public CompressionType ContentEncoding { get; private set; } = CompressionType.Unknown;
         public int ContentLength { get; private set; } = -1;
         private int Processed { get; set; } = -1;
 
@@ -29,7 +29,7 @@ namespace CSSockets.Http.Reference
             BodyType? bodyType = BodyType.TryDetectFor(head);
             if (bodyType == null) return false;
 
-            ContentEncoding content = bodyType.Value.ContentEncoding;
+            CompressionType content = bodyType.Value.CompressionType;
             TransferEncoding transfer = bodyType.Value.TransferEncoding;
             int contentLength = bodyType.Value.ContentLength;
 
@@ -41,10 +41,10 @@ namespace CSSockets.Http.Reference
             ContentLength = contentLength;
             switch (content)
             {
-                case ContentEncoding.Binary: IsCompressing = false; ContentTransform = new RawUnifiedDuplex(); break;
-                case ContentEncoding.Gzip: IsCompressing = true; ContentTransform = new GzipCompressor(CompressionLevel); break;
-                case ContentEncoding.Deflate: IsCompressing = true; ContentTransform = new DeflateCompressor(CompressionLevel); break;
-                case ContentEncoding.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
+                case CompressionType.None: IsCompressing = false; ContentTransform = new RawUnifiedDuplex(); break;
+                case CompressionType.Gzip: IsCompressing = true; ContentTransform = new GzipCompressor(CompressionLevel); break;
+                case CompressionType.Deflate: IsCompressing = true; ContentTransform = new DeflateCompressor(CompressionLevel); break;
+                case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
                 default: throw new ArgumentException("Got Unknown as content encoding");
             }
             return true;
@@ -109,7 +109,7 @@ namespace CSSockets.Http.Reference
             ContentTransform.End();
             IsCompressing = false;
             TransferEncoding = TransferEncoding.None;
-            ContentEncoding = ContentEncoding.Unknown;
+            ContentEncoding = CompressionType.Unknown;
             ContentLength = -1;
             Processed = 0;
         }

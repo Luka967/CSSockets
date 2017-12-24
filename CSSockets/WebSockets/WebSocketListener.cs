@@ -95,6 +95,7 @@ namespace CSSockets.WebSockets
         {
             res.SetHead(code, reason, new Header("Content-Length", body.Length.ToString()), new Header("Connection", "close"));
             foreach (Header h in otherHeaders) res.SetHeader(h.Name, h.Value);
+            res.Write(body);
             res.End();
         }
 

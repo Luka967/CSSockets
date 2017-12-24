@@ -194,8 +194,8 @@ namespace CSSockets.Tcp
                 State = TcpSocketState.Closed;
                 OnError?.Invoke(new SocketException((int)error));
                 OnClose?.Invoke();
-                EndReadable();
-                EndWritable();
+                if (!ReadableEnded) EndReadable();
+                if (!WritableEnded) EndWritable();
                 UpdateRemoteAddress();
             }
         }

@@ -187,6 +187,8 @@ namespace CSSockets.Tcp
         }
         private void EndWithError(SocketError error)
         {
+            if (State == TcpSocketState.Closed) return;
+            State = TcpSocketState.Closed;
             OnError?.Invoke(new SocketException((int)error));
             OnClose?.Invoke();
             EndReadable();

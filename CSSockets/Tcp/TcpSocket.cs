@@ -36,6 +36,7 @@ namespace CSSockets.Tcp
         public Socket Base { get; }
         public IPAddress RemoteAddress { get; private set; }
         private object SocketCloseLock { get; } = new object();
+        private object SocketErrorLock { get; } = new object();
 
         public event TcpSocketControlHandler OnOpen;
         public event TcpExceptionHandler OnError;
@@ -187,13 +188,16 @@ namespace CSSockets.Tcp
         }
         private void EndWithError(SocketError error)
         {
-            if (State == TcpSocketState.Closed) return;
-            State = TcpSocketState.Closed;
-            OnError?.Invoke(new SocketException((int)error));
-            OnClose?.Invoke();
-            EndReadable();
-            EndWritable();
-            UpdateRemoteAddress();
+            lock (SocketErrorLock)
+            {
+                if (State == TcpSocketState.Closed) return;
+                State = TcpSocketState.Closed;
+                OnError?.Invoke(new SocketException((int)error));
+                OnClose?.Invoke();
+                EndReadable();
+                EndWritable();
+                UpdateRemoteAddress();
+            }
         }
         public override void End()
         {

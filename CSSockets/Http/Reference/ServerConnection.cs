@@ -10,7 +10,7 @@ namespace CSSockets.Http.Reference
         public ServerConnection(TcpSocket socket) : base(socket, new RequestHeadParser(), new ResponseHeadSerializer())
         { }
 
-        protected override void ProcessorThread(object _)
+        protected override void ProcessorThread()
         {
             try
             {

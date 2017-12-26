@@ -114,7 +114,7 @@ namespace CSSockets.Base
                 if (nextTime != null)
                 {
                     TimeSpan timeout = nextTime.Value - DateTime.Now;
-                    EventInterrupt.WaitOne(timeout);
+                    EventInterrupt.WaitOne(timeout > TimeSpan.Zero ? timeout : TimeSpan.Zero);
                     if (InterruptReset)
                     {
                         InterruptReset = false;

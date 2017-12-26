@@ -16,11 +16,11 @@ using System.Collections.Concurrent;
 
 namespace CSSockets
 {
-    class Program
+    partial class Program
     {
         static void Main(string[] args)
         {
-            TcpSocketTerminateTest(args);
+            TcpSocketStressTest(args);
         }
 
         static void WebSocketFramingTest(string[] args)
@@ -411,10 +411,72 @@ namespace CSSockets
             Console.ReadKey();
         }
 
+        static void TcpSocketStressTest(string[] args)
+        {
+            int openedConns = 0;
+            int dataProcessed = 0;
+            int closedConns = 0;
+            bool running = true;
+
+            byte[] testData = new byte[] { 1, 2, 3, 4, 5 };
+            IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420);
+            TcpListener listener = new TcpListener();
+            listener.BacklogSize = 1048576;
+            listener.OnConnection += (client) =>
+            {
+                if (client.Ended) return;
+                openedConns++;
+                client.OnData += (data) =>
+                {
+                    dataProcessed += data.Length;
+                    client.Write(data);
+                };
+                client.OnClose += () => closedConns++;
+            };
+            listener.Bind(endPoint);
+            listener.Start();
+
+            Thread t = new Thread(() =>
+            {
+                while (running)
+                {
+                    TcpSocket s = new TcpSocket();
+                    s.CanTimeout = true;
+                    s.TimeoutAfter = new TimeSpan(0, 0, 5);
+                    s.OnOpen += () =>
+                    {
+                        s.OnData += (data) => s.End();
+                        s.OnTimeout += () => s.Terminate();
+                        s.Write(testData);
+                    };
+                    s.Connect(endPoint);
+                }
+                Console.WriteLine("connector ended");
+            })
+            { Name = "TcpSocket stress connector" };
+            t.Start();
+
+            Base.Timer T = new Base.Timer();
+            T.Begin();
+            T.SetInterval((Action)(() =>
+            {
+                Console.WriteLine("opened {0} processed {1} closed {2} handling {3} threads {4}",
+                    openedConns, dataProcessed, closedConns, TcpSocketIOHandler.SocketCount, TcpSocketIOHandler.Threads.Count);
+                openedConns = dataProcessed = closedConns = 0;
+            }), 1000);
+
+            Console.ReadKey();
+            running = false;
+            listener.Stop();
+            Console.ReadKey();
+            T.End();
+            Console.ReadKey();
+        }
+
         static void TcpSocketTerminateTest(string[] args)
         {
             TcpListener listener = new TcpListener();
-            TcpSocket client = new TcpSocket(false);
+            TcpSocket client = new TcpSocket();
             TcpSocket server = null;
             listener.Bind(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
             listener.OnConnection += (_server) =>
@@ -439,7 +501,7 @@ namespace CSSockets
         static void TcpSocketHalfOpenTest(string[] args)
         {
             TcpListener listener = new TcpListener();
-            TcpSocket client = new TcpSocket(true);
+            TcpSocket client = new TcpSocket();
             TcpSocket server = null;
             listener.Bind(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
             listener.OnConnection += (_server) =>

@@ -32,11 +32,11 @@ namespace CSSockets.Http.Base
             HeadSerializer = headSerializer;
             BodyParser = new BodyParser();
             BodySerializer = new BodySerializer();
-            ThreadPool.QueueUserWorkItem(ProcessorThread);
+            new Thread(ProcessorThread).ToString();
             Base.OnClose += End;
         }
 
-        abstract protected void ProcessorThread(object _);
+        abstract protected void ProcessorThread();
 
         public void WriteHead(Outgoing head)
         {

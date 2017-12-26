@@ -31,25 +31,29 @@ namespace CSSockets.Tcp
     /// </summary>
     sealed public class TcpSocket : BaseDuplex
     {
-        public TcpSocketState State { get; private set; }
-        public bool AllowHalfOpen { get; set; }
+        public TcpSocketState State { get; internal set; }
         public Socket Base { get; }
         public IPAddress RemoteAddress { get; private set; }
-        private object SocketCloseLock { get; } = new object();
-        private object SocketErrorLock { get; } = new object();
+
+        internal TcpSocketIOHandler.IOThread IOHandler { get; set; }
 
         public event TcpSocketControlHandler OnOpen;
         public event TcpExceptionHandler OnError;
+        public event TcpSocketControlHandler OnTimeout;
         public event TcpSocketControlHandler OnEnd;
         public event TcpSocketControlHandler OnClose;
 
-        public TcpSocket(bool allowHalfOpen = false)
-            : this(new Socket(SocketType.Stream, ProtocolType.Tcp), allowHalfOpen) { }
-        public TcpSocket(Socket socket, bool allowHalfOpen = false)
+        public bool CanTimeout { get; set; }
+        public TimeSpan TimeoutAfter { get; set; }
+        public DateTime LastActivityTime { get; private set; }
+        private bool CalledTimeout { get; set; } = false;
+
+        public TcpSocket()
+            : this(new Socket(SocketType.Stream, ProtocolType.Tcp)) { }
+        public TcpSocket(Socket socket)
         {
             if (socket.ProtocolType != ProtocolType.Tcp)
                 throw new SocketException((int)SocketError.ProtocolType);
-            AllowHalfOpen = allowHalfOpen;
             Base = socket;
             if (Base.Connected) BeginOps();
             else State = TcpSocketState.Closed;
@@ -83,11 +87,7 @@ namespace CSSockets.Tcp
             {
                 Base.EndConnect(ar);
             }
-            catch (SocketException e)
-            {
-                EndWithError(e.SocketErrorCode);
-                return;
-            }
+            catch (SocketException e) { return; }
             BeginOps();
         }
 
@@ -95,125 +95,114 @@ namespace CSSockets.Tcp
         {
             State = TcpSocketState.Open;
             UpdateRemoteAddress();
-            ThreadPool.QueueUserWorkItem(RecvLoop);
-            ThreadPool.QueueUserWorkItem(SendLoop);
+            LastActivityTime = DateTime.UtcNow;
+            TcpSocketIOHandler.Enqueue(this);
             OnOpen?.Invoke();
         }
 
-        private void RecvLoop(object _)
+        internal bool SocketControl(SocketException ex, bool silentClose, bool terminate, bool close, bool r, bool w)
         {
-            byte[] buf = new byte[65536];
-            while (true)
+            if (ex != null)
             {
-                if (!Base.Connected)
-                {
-                    EndWithError(SocketError.ConnectionAborted);
-                    return;
-                }
-                int len = Base.Receive(buf, 0, 65536, SocketFlags.None, out SocketError code);
-                if (code == SocketError.Interrupted || len == 0)
-                    break;
-                else if (code != SocketError.Success)
-                {
-                    EndWithError(code);
-                    return;
-                }
-                Readable.Write(buf, 0, len);
+                State = TcpSocketState.Closed;
+                if (!silentClose) try { Base.Dispose(); } catch (ObjectDisposedException) { }
+                if (!ReadableEnded) Readable.End();
+                if (!WritableEnded) Writable.End();
+                OnError?.Invoke(ex);
+                OnClose?.Invoke();
+                return true;
             }
-            if (!Readable.Ended)
-                EndReadable();
-        }
-        private void SendLoop(object _)
-        {
-            while (true)
+            else if (silentClose)
             {
-                byte[] next;
-                if (Writable.Ended || (State == TcpSocketState.Closing && Writable.Buffered == 0))
-                    break;
-                next = Writable.Read();
-                if (next == null)
-                    break;
-                Base.Send(next, 0, next.Length, SocketFlags.None, out SocketError code);
-                if (code == SocketError.Interrupted)
-                    break;
-                else if (code != SocketError.Success)
-                {
-                    EndWithError(code);
-                    return;
-                }
+                State = TcpSocketState.Closed;
+                if (!ReadableEnded) Readable.End();
+                if (!WritableEnded) Writable.End();
+                OnClose?.Invoke();
+                return true;
             }
-            if (!Writable.Ended)
-                EndWritable();
-        }
-
-        private void SetClosing()
-        {
-            if (State == TcpSocketState.Closing)
-                return;
-            if (AllowHalfOpen) OnEnd?.Invoke();
+            else if (terminate)
+            {
+                State = TcpSocketState.Closed;
+                Base.Dispose();
+                if (!ReadableEnded) Readable.End();
+                if (!WritableEnded) Writable.End();
+                OnClose?.Invoke();
+                return true;
+            }
+            else if (close)
+            {
+                State = TcpSocketState.Closed;
+                Base.Close();
+                if (!ReadableEnded) Readable.End();
+                if (!WritableEnded) Writable.End();
+                OnClose?.Invoke();
+                return true;
+            }
             else
             {
-                State = TcpSocketState.Closing;
-                if (Writable.Buffered == 0)
-                    EndWritable();
-            }
-        }
-        protected override void OnEnded()
-        {
-            State = TcpSocketState.Closed;
-            Base.Close();
-            OnClose?.Invoke();
-            UpdateRemoteAddress();
-        }
-        protected override void EndReadable()
-        {
-            lock (SocketCloseLock)
-            {
-                if (State != TcpSocketState.Closed)
+                bool alreadyClosed = false;
+                if (r)
                 {
-                    SetClosing();
                     Base.Shutdown(SocketShutdown.Receive);
+                    if (!ReadableEnded) Readable.End();
+                    alreadyClosed = ProgressClose();
                 }
-                base.EndReadable();
-            }
-        }
-        protected override void EndWritable()
-        {
-            lock (SocketCloseLock)
-            {
-                if (State != TcpSocketState.Closed)
+                if (w && !alreadyClosed)
+                {
                     Base.Shutdown(SocketShutdown.Send);
-                base.EndWritable();
+                    if (!WritableEnded) Writable.End();
+                    alreadyClosed = ProgressClose();
+                }
+                return alreadyClosed;
             }
         }
-        private void EndWithError(SocketError error)
+        internal bool ProgressClose()
         {
-            lock (SocketErrorLock)
+            if (State == TcpSocketState.Open)
             {
-                if (State == TcpSocketState.Closed) return;
+                State = TcpSocketState.Closing;
+                if (OnEnd != null) OnEnd();
+                else if (Writable.Buffered == 0)
+                {
+                    SocketControl(null, false, false, false, false, true);
+                    return true;
+                }
+            }
+            else if (State == TcpSocketState.Closing)
+            {
                 State = TcpSocketState.Closed;
-                OnError?.Invoke(new SocketException((int)error));
-                OnClose?.Invoke();
-                if (!ReadableEnded) EndReadable();
-                if (!WritableEnded) EndWritable();
-                UpdateRemoteAddress();
+                SocketControl(null, false, false, true, false, false);
+                return true;
             }
+            return false;
         }
-        public override void End()
+        internal void FireTimeout()
         {
-            switch (State)
+            if (OnTimeout != null && !CalledTimeout)
             {
-                case TcpSocketState.Closed:
-                case TcpSocketState.Opening:
-                    base.End();
-                    break;
-                case TcpSocketState.Open:
-                    AllowHalfOpen = false;
-                    SetClosing();
-                    break;
-                case TcpSocketState.Closing:
-                    throw new SocketException((int)SocketError.Disconnecting);
+                OnTimeout();
+                CalledTimeout = true;
             }
+            else if (OnTimeout == null)
+                SocketControl(null, false, false, false, false, false);
+        }
+        public void ResetTimeout() => LastActivityTime = DateTime.UtcNow;
+
+        public override byte[] Read() => Readable.Read();
+        public override byte[] Read(int length) => Readable.Read(length);
+        public override void Write(byte[] data) => Writable.Write(data);
+
+        internal byte[] ReadOutgoing()
+        {
+            LastActivityTime = DateTime.UtcNow;
+            CalledTimeout = false;
+            return Writable.Read();
+        }
+        internal void WriteIncoming(byte[] data)
+        {
+            LastActivityTime = DateTime.UtcNow;
+            CalledTimeout = false;
+            Readable.Write(data);
         }
 
         public void Terminate()
@@ -221,27 +210,45 @@ namespace CSSockets.Tcp
             switch (State)
             {
                 case TcpSocketState.Closed:
+                    throw new InvalidOperationException("This socket is closed");
                 case TcpSocketState.Opening:
-                case TcpSocketState.Closing:
-                    throw new SocketException((int)SocketError.NotConnected);
+                    throw new InvalidOperationException("This socket is opening; to prematurely close the connection call End() instead");
                 case TcpSocketState.Open:
-                    AllowHalfOpen = false;
-                    State = TcpSocketState.Closed;
-                    Base.Dispose();
-                    OnClose?.Invoke();
+                case TcpSocketState.Closing:
+                    IOHandler.EnqueueTerminate(this);
+                    break;
+            }
+        }
+        public override void End()
+        {
+            switch (State)
+            {
+                case TcpSocketState.Closed:
+                    throw new InvalidOperationException("This socket is closed");
+                case TcpSocketState.Opening:
+                case TcpSocketState.Open:
+                    IOHandler.EnqueueCloseProgress(this);
+                    break;
+                case TcpSocketState.Closing:
+                    if (WritableEnded) throw new InvalidOperationException("This socket is closing; to forcibly close the connection call Terminate() instead");
+                    IOHandler.EnqueueCloseProgress(this);
                     break;
             }
         }
 
-        public override byte[] Read() => Readable.Read();
-        public override byte[] Read(int length) => Readable.Read(length);
-        public override void Write(byte[] data) => Writable.Write(data);
         public void Connect(EndPoint endPoint)
         {
             if (State != TcpSocketState.Closed)
                 throw new InvalidOperationException("The socket state is not Closed thus a Connect operation is invalid.");
             State = TcpSocketState.Opening;
-            Base.BeginConnect(endPoint, OnConnect, null);
+            try
+            {
+                Base.BeginConnect(endPoint, OnConnect, null);
+            }
+            catch (SocketException ex)
+            {
+                SocketControl(ex, true, false, false, false, false);
+            }
         }
     }
 }

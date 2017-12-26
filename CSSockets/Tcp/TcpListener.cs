@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net;
+using System.Threading;
 using System.Net.Sockets;
 
 namespace CSSockets.Tcp
@@ -34,7 +35,7 @@ namespace CSSockets.Tcp
             CreateBase();
             Base.Bind(BindEndPoint);
             Base.Listen(BacklogSize);
-            ListenIteration();
+            new Thread(ListenIteration) { IsBackground = true }.Start();
         }
         public void Stop()
         {
@@ -44,13 +45,16 @@ namespace CSSockets.Tcp
             Base.Close();
         }
 
-        private void ListenIteration() => Base.BeginAccept(OnNewSocket, null);
-        private void OnNewSocket(IAsyncResult ar)
+        private void ListenIteration()
         {
-            if (!Listening) return;
-            TcpSocket socket = new TcpSocket(Base.EndAccept(ar));
-            OnConnection?.Invoke(socket);
-            ListenIteration();
+            while (true)
+            {
+                Socket newSocket;
+                try { newSocket = Base.Accept(); }
+                catch (SocketException) { return; }
+                catch (ObjectDisposedException) { return; }
+                OnConnection?.Invoke(new TcpSocket(newSocket));
+            }
         }
     }
 }

@@ -32,7 +32,7 @@ namespace CSSockets.Http.Base
             HeadSerializer = headSerializer;
             BodyParser = new BodyParser();
             BodySerializer = new BodySerializer();
-            new Thread(ProcessorThread).ToString();
+            new Thread(ProcessorThread) { IsBackground = true }.Start();
             Base.OnClose += End;
         }
 

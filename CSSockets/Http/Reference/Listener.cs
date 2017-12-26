@@ -62,9 +62,9 @@ namespace CSSockets.Http.Reference
 
         private void OnNewSocket(TcpSocket socket)
         {
+            socket.OnClose += () => { lock (Sync) Connections.Remove(conn); };
             ServerConnection conn = new ServerConnection(socket);
             lock (Sync) Connections.Add(conn);
-            conn.OnEnd += () => { lock (Sync) Connections.Remove(conn); };
             OnConnection?.Invoke(conn);
             conn.OnMessage = (req, res) => handler(req as ClientRequest, res as ServerResponse);
         }

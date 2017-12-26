@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Text;
-using CSSockets.Tcp;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Primitives;
 using System.Security.Cryptography;
@@ -78,6 +77,7 @@ namespace CSSockets.WebSockets
             SHA1 hasher = SHA1.Create();
             byte[] result = hasher.ComputeHash(Encoding.UTF8.GetBytes(req["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
             string str = Convert.ToBase64String(result, Base64FormattingOptions.None);
+            hasher.Dispose();
 
             res.SetHead(101, "Switching Protocols");
             res["Connection"] = "upgrade";
@@ -86,7 +86,7 @@ namespace CSSockets.WebSockets
             res["Sec-WebSocket-Accept"] = str;
 
             byte[] trail = res.Upgrade();
-            WebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head, trail);
+            ServerWebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head, trail);
             OnConnection?.Invoke(ws);
             ws.Base.Resume();
         }

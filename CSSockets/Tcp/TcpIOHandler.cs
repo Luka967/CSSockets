@@ -117,8 +117,10 @@ namespace CSSockets.Tcp
                     }
                     // close requesting
                     while (QueuedCloseProgress.TryDequeue(out TcpSocket ts))
-                        if (ts.ProgressClose())
-                            streams.Remove(ts.Base);
+                    {
+                        if (!ts.WritableEnded) ts.SocketControl(null, false, false, false, false, true);
+                        else ts.SocketControl(null, false, false, true, false, false);
+                    }
 
                     // update count & shut down if none
                     if ((SocketCount = streams.Count) == 0) break;

@@ -28,6 +28,7 @@ namespace CSSockets
             WebSocketListener listener = new WebSocketListener(new IPEndPoint(IPAddress.Parse("0.0.0.0"), 1000), "/");
             listener.OnConnection += (ws) =>
             {
+                // to be echoed
                 ws.Send(new byte[125]);
                 ws.Send(new byte[126]);
                 ws.Send(new byte[127]);
@@ -416,6 +417,7 @@ namespace CSSockets
             int openedConns = 0;
             int dataProcessed = 0;
             int closedConns = 0;
+            int timedOut = 0;
             bool running = true;
 
             byte[] testData = new byte[] { 1, 2, 3, 4, 5 };
@@ -428,7 +430,7 @@ namespace CSSockets
                 openedConns++;
                 client.OnData += (data) =>
                 {
-                    dataProcessed += data.Length;
+                    dataProcessed++;
                     client.Write(data);
                 };
                 client.OnClose += () => closedConns++;
@@ -460,9 +462,9 @@ namespace CSSockets
             T.Begin();
             T.SetInterval((Action)(() =>
             {
-                Console.WriteLine("opened {0} processed {1} closed {2} handling {3} threads {4}",
-                    openedConns, dataProcessed, closedConns, TcpSocketIOHandler.SocketCount, TcpSocketIOHandler.Threads.Count);
-                openedConns = dataProcessed = closedConns = 0;
+                Console.WriteLine("opened {0:0000} processed {1:0000} closed {2:0000} timed out {3:0000} handling {4:0000} threads {5:000}",
+                    openedConns, dataProcessed, closedConns, timedOut, TcpSocketIOHandler.SocketCount, TcpSocketIOHandler.Threads.Count);
+                openedConns = dataProcessed = closedConns = timedOut = 0;
             }), 1000);
 
             Console.ReadKey();
@@ -548,7 +550,7 @@ namespace CSSockets
                 server.OnData += (data) =>
                 {
                     Console.WriteLine("SERVER {0}", data.ToBase16String());
-                    if (server.State == TcpSocketState.Open) server.End();
+                    server.End();
                 };
                 server.OnClose += () => Console.WriteLine("SERVER CLOSED");
             };
@@ -558,11 +560,14 @@ namespace CSSockets
             {
                 Console.WriteLine("CLIENT OPEN");
                 client.Write(new byte[] { 1, 2, 3, 4, 5 });
+                client.End();
             };
             client.OnData += (data) => Console.WriteLine("CLIENT {0}", data.ToBase16String());
             client.OnError += (e) => Console.WriteLine("CLIENT ERROR {0}", e);
             client.OnClose += () => Console.WriteLine("CLIENT CLOSED");
             client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
+            Console.ReadKey();
+            Console.WriteLine("{0} {1}", client.State, server.State);
             Console.ReadKey();
         }
     }

@@ -77,14 +77,14 @@ namespace CSSockets.Http.Base
             int index = 0;
             if (HeadParser.Buffered > 0)
             {
-                byte[] _1 = HeadParser.Read();
-                Buffer.BlockCopy(_1, 0, trail, index, _1.Length);
-                index += _1.Length;
+                byte[] trail1 = HeadParser.Read();
+                Buffer.BlockCopy(trail1, 0, trail, index, trail1.Length);
+                index += trail1.Length;
             }
             if (HeadParser.Buffered > 0)
             {
-                byte[] _2 = HeadParser.Read();
-                Buffer.BlockCopy(_2, 0, trail, index, _2.Length);
+                byte[] trail2 = HeadParser.Read();
+                Buffer.BlockCopy(trail2, 0, trail, index, trail2.Length);
             }
             return trail;
         }

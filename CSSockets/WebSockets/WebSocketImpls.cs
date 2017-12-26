@@ -20,6 +20,9 @@ namespace CSSockets.WebSockets
             InitiateClose(code, reason);
         }
 
+        protected override bool IsValidFrame(Frame frame)
+            => frame.Masked && !frame.RSV1 && !frame.RSV2 && !frame.RSV3;
+
         public override void Ping(byte[] data = null)
             => Send(new Frame(true, 9, false, data ?? new byte[0], false, false, false));
         public override void Send(byte[] data)
@@ -50,6 +53,9 @@ namespace CSSockets.WebSockets
             Send(new Frame(true, 8, true, payload, false, false, false));
             InitiateClose(code, reason);
         }
+
+        protected override bool IsValidFrame(Frame frame)
+            => !frame.Masked && !frame.RSV1 && !frame.RSV2 && !frame.RSV3;
 
         public override void Ping(byte[] data = null)
             => Send(new Frame(true, 9, true, data ?? new byte[0], false, false, false));

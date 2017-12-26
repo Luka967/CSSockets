@@ -162,7 +162,7 @@ namespace CSSockets.Tcp
             {
                 State = TcpSocketState.Closing;
                 if (OnEnd != null) OnEnd();
-                else if (Writable.Buffered == 0)
+                else if (!WritableEnded && Writable.Buffered == 0)
                 {
                     SocketControl(null, false, false, false, false, true);
                     return true;
@@ -230,7 +230,8 @@ namespace CSSockets.Tcp
                     IOHandler.EnqueueCloseProgress(this);
                     break;
                 case TcpSocketState.Closing:
-                    if (WritableEnded) throw new InvalidOperationException("This socket is closing; to forcibly close the connection call Terminate() instead");
+                    if (WritableEnded)
+                        throw new InvalidOperationException("This socket is closing; to forcibly close the connection call Terminate() instead");
                     IOHandler.EnqueueCloseProgress(this);
                     break;
             }

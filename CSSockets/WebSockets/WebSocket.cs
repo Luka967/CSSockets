@@ -33,6 +33,8 @@ namespace CSSockets.WebSockets
         protected WebSocket(TcpSocket socket, RequestHead head, byte[] trail)
         {
             Base = socket;
+            Base.OnClose += OnSurpriseEnd;
+            Base.OnClose += OnSocketEnd;
             RequestHead = head;
             FrameParser = new FrameParser();
             FrameMerger = new FrameMerger();
@@ -42,8 +44,15 @@ namespace CSSockets.WebSockets
             Base.Pipe(FrameParser);
         }
 
+        abstract protected bool IsValidFrame(Frame frame);
+
         private void OnIncomingFrame(Frame frame)
         {
+            if (!IsValidFrame(frame))
+            {
+                ForciblyClose();
+                return;
+            }
             FrameMergeResponse res = FrameMerger.MergeFrame(frame);
             switch (res)
             {
@@ -57,19 +66,20 @@ namespace CSSockets.WebSockets
 
         private void OnIncomingMessage(Message message)
         {
+            if (State == TcpSocketState.Closed) return;
             switch (message.Opcode)
             {
                 case 1: OnString?.Invoke(Encoding.UTF8.GetString(message.Data)); break;
                 case 2: OnBinary?.Invoke(message.Data); break;
                 case 8:
-                    if (State != TcpSocketState.Open) break;
                     ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
-                    string reason = Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2);
+                    string reason = message.Data.Length >= 2 ? Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2) : null;
                     OnClose?.Invoke(code, reason);
                     AnswerClose(code, reason);
                     break;
                 case 9: OnPing?.Invoke(message.Data); AnswerPing(message.Data); break;
                 case 10: OnPong?.Invoke(message.Data); break;
+                default: ForciblyClose(); break;
             }
         }
 
@@ -78,13 +88,21 @@ namespace CSSockets.WebSockets
         virtual public void Pause() => Base.Pause();
         virtual public void Resume() => Base.Resume();
 
+        private void OnSurpriseEnd() => OnClose?.Invoke(0, null);
+        private void OnSocketEnd()
+        {
+            FrameParser.End();
+            FrameMerger.End();
+        }
         protected void InitiateClose(ushort code, string reason)
         {
+            Base.OnEnd -= OnSurpriseEnd;
             Base.End();
             OnClose?.Invoke(code, reason);
         }
         protected void ForciblyClose()
         {
+            Base.OnEnd -= OnSurpriseEnd;
             Base.Terminate();
             OnClose?.Invoke(0, null);
         }

@@ -546,8 +546,9 @@ namespace CSSockets
             {
                 Console.WriteLine("SERVER OPENED");
                 server.CanTimeout = true;
-                server.TimeoutAfter = new TimeSpan(0, 1, 0);
+                server.TimeoutAfter = new TimeSpan(0, 0, 5);
                 server.OnClose += () => Console.WriteLine("SERVER CLOSED");
+                server.OnData += (data) => Console.WriteLine("SERVER DATA {0}", data.ToBase16String());
                 server.OnTimeout += () =>
                 {
                     Console.WriteLine("SERVER TIMEOUT");

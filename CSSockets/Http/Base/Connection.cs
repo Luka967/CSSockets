@@ -25,13 +25,15 @@ namespace CSSockets.Http.Base
         virtual protected BodyParser BodyParser { get; }
         virtual protected BodySerializer BodySerializer { get; }
 
-        public Connection(TcpSocket socket, HeadParser<Incoming> headParser, HeadSerializer<Outgoing> headSerializer)
+        public Connection(TcpSocket socket, HeadParser<Incoming> headParser, HeadSerializer<Outgoing> headSerializer,
+            HttpMessageHandler<Incoming, Outgoing> messageHandler)
         {
             Base = socket;
             HeadParser = headParser;
             HeadSerializer = headSerializer;
             BodyParser = new BodyParser();
             BodySerializer = new BodySerializer();
+            OnMessage = messageHandler;
             new Thread(ProcessorThread) { IsBackground = true }.Start();
             Base.OnClose += End;
         }

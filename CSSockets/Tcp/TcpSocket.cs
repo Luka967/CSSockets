@@ -87,7 +87,10 @@ namespace CSSockets.Tcp
             {
                 Base.EndConnect(ar);
             }
-            catch (SocketException e) { return; }
+            catch (SocketException ex)
+            {
+                Dispose(ex);
+            }
             BeginOps();
         }
 
@@ -100,6 +103,15 @@ namespace CSSockets.Tcp
             OnOpen?.Invoke();
         }
 
+        private void Dispose(SocketException ex)
+        {
+            State = TcpSocketState.Closed;
+            Base.Dispose();
+            if (!ReadableEnded) Readable.End();
+            if (!WritableEnded) Writable.End();
+            OnError?.Invoke(ex);
+            OnClose?.Invoke();
+        }
         internal bool SocketControl(SocketException ex, bool silentClose, bool terminate, bool close, bool r, bool w)
         {
             if (ex != null)
@@ -248,7 +260,7 @@ namespace CSSockets.Tcp
             }
             catch (SocketException ex)
             {
-                SocketControl(ex, true, false, false, false, false);
+                Dispose(ex);
             }
         }
     }

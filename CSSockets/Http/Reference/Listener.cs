@@ -60,13 +60,15 @@ namespace CSSockets.Http.Reference
             Base.Bind(listenEndpoint);
         }
 
+        private void RequestTransform(IncomingMessage<RequestHead, ResponseHead> request, OutgoingMessage<RequestHead, ResponseHead> response)
+            => handler(request as ClientRequest, response as ServerResponse);
+
         private void OnNewSocket(TcpSocket socket)
         {
-            ServerConnection conn = new ServerConnection(socket);
-            socket.OnClose += () => { lock (Sync) Connections.Remove(conn); };
+            ServerConnection conn = new ServerConnection(socket, RequestTransform);
             lock (Sync) Connections.Add(conn);
+            socket.OnClose += () => { lock (Sync) Connections.Remove(conn); };
             OnConnection?.Invoke(conn);
-            conn.OnMessage = (req, res) => handler(req as ClientRequest, res as ServerResponse);
         }
 
         public void Start()

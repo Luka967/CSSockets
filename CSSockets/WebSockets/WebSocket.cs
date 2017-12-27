@@ -20,6 +20,7 @@ namespace CSSockets.WebSockets
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
         public RequestHead RequestHead { get; }
+        private bool CalledClose { get; set; }
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -93,7 +94,13 @@ namespace CSSockets.WebSockets
         virtual public void Pause() => Base.Pause();
         virtual public void Resume() => Base.Resume();
 
-        private void OnSurpriseEnd() => OnClose?.Invoke(0, null);
+        private void FireClose(ushort code, string reason)
+        {
+            if (CalledClose) return;
+            CalledClose = true;
+            OnClose?.Invoke(code, reason);
+        }
+        private void OnSurpriseEnd() => FireClose(0, null);
         private void OnSocketEnd()
         {
             FrameParser.End();
@@ -103,13 +110,13 @@ namespace CSSockets.WebSockets
         {
             Base.OnEnd -= OnSurpriseEnd;
             Base.End();
-            OnClose?.Invoke(code, reason);
+            FireClose(code, reason);
         }
         protected void ForciblyClose()
         {
             Base.OnEnd -= OnSurpriseEnd;
             Base.Terminate();
-            OnClose?.Invoke(0, null);
+            FireClose(0, null);
         }
         protected void Send(Frame frame)
         {

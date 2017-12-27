@@ -65,6 +65,7 @@ namespace CSSockets.Tcp
             private ConcurrentQueue<TcpSocket> QueuedNew = new ConcurrentQueue<TcpSocket>();
             private ConcurrentQueue<TcpSocket> QueuedTerm = new ConcurrentQueue<TcpSocket>();
             private ConcurrentQueue<TcpSocket> QueuedCloseProgress = new ConcurrentQueue<TcpSocket>();
+            private bool gotFirstSocket = false;
 
             internal volatile bool Running = true;
             internal volatile int SocketCount = 0;
@@ -102,7 +103,10 @@ namespace CSSockets.Tcp
                 {
                     // insert new
                     while (QueuedNew.TryDequeue(out TcpSocket ts))
+                    {
+                        gotFirstSocket = true;
                         streams.Add(ts.Base, ts);
+                    }
                     // terminate requesting
                     while (QueuedTerm.TryDequeue(out TcpSocket ts))
                     {
@@ -117,7 +121,8 @@ namespace CSSockets.Tcp
                     }
 
                     // update count & shut down if none
-                    if ((SocketCount = streams.Count) == 0) break;
+                    if ((SocketCount = streams.Count) == 0 && QueuedNew.Count == 0 && gotFirstSocket)
+                        break;
 
                     // update lists
                     recvCheck.Clear(); sendCheck.Clear(); errorCheck.Clear();
@@ -127,15 +132,14 @@ namespace CSSockets.Tcp
                     foreach (KeyValuePair<Socket, TcpSocket> v in streams)
                     {
                         TcpSocket ts = v.Value;
-                        if (ts.WritableEnded)
-                            endWrite.Add(v.Key);
-                        else if (ts.OutgoingBuffered > 0)
-                            sendCheck.Add(v.Key);
+                        if (ts.WritableEnded) endWrite.Add(v.Key);
+                        else if (ts.OutgoingBuffered > 0) sendCheck.Add(v.Key);
                         else if (ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
                             ts.FireTimeout();
                     }
                     endRead.Clear(); endWrite.Clear(); endError.Clear();
 
+                    if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
                     // execute long-polling
                     Socket.Select(recvCheck, sendCheck, errorCheck, POLL_TIME);
                     if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;

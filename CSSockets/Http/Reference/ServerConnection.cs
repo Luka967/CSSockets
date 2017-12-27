@@ -7,7 +7,8 @@ namespace CSSockets.Http.Reference
 {
     sealed public class ServerConnection : Connection<RequestHead, ResponseHead>
     {
-        public ServerConnection(TcpSocket socket) : base(socket, new RequestHeadParser(), new ResponseHeadSerializer())
+        public ServerConnection(TcpSocket socket, HttpMessageHandler<RequestHead, ResponseHead> handler) :
+            base(socket, new RequestHeadParser(), new ResponseHeadSerializer(), handler)
         { }
 
         protected override void ProcessorThread()
@@ -61,6 +62,7 @@ namespace CSSockets.Http.Reference
                     res.BodyBuffer.Pipe(BodySerializer);
                     req.OnEnd += Terminate;
 
+                    if (OnMessage == null) throw new InvalidOperationException("OnMessage is null");
                     OnMessage?.Invoke(req, res);
                     if (req.Cancelled) break; // terminated
                     if (!res.Ended) res.EndWait.WaitOne(); // wait for end

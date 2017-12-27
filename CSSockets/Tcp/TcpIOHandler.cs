@@ -10,7 +10,7 @@ namespace CSSockets.Tcp
     internal static class TcpSocketIOHandler
     {
         private const int POLL_TIME = 100;
-        private const int THREAD_MAX_SOCKETS = 128;
+        private const int THREAD_MAX_SOCKETS = 32;
 
         private static List<IOThread> _threads = new List<IOThread>();
         public static ReadOnlyCollection<IOThread> Threads
@@ -42,7 +42,7 @@ namespace CSSockets.Tcp
                 for (int i = 0; i < _threads.Count; i++)
                 {
                     IOThread curr = _threads[i];
-                    if (curr.SocketCount > 0 && (best == null || best.SocketCount > curr.SocketCount))
+                    if (best == null || best.SocketCount > curr.SocketCount)
                         best = curr;
                 }
                 if (best == null || best.SocketCount > THREAD_MAX_SOCKETS)
@@ -67,15 +67,9 @@ namespace CSSockets.Tcp
             private ConcurrentQueue<TcpSocket> QueuedCloseProgress = new ConcurrentQueue<TcpSocket>();
 
             internal volatile bool Running = true;
-            internal volatile IOThread MergeTo = null;
             internal volatile int SocketCount = 0;
-            internal Thread SystemThread = null;
 
-            public IOThread()
-            {
-                SystemThread = new Thread(PollT) { IsBackground = true, Name = "TCP I/O Thread" };
-                SystemThread.Start();
-            }
+            public IOThread() => new Thread(PollT) { IsBackground = true, Name = "TCP I/O Thread" }.Start();
 
             public IOThread Enqueue(TcpSocket socket)
             {
@@ -128,13 +122,23 @@ namespace CSSockets.Tcp
                     // update lists
                     recvCheck.Clear(); sendCheck.Clear(); errorCheck.Clear();
                     recvCheck.AddRange(streams.Keys);
-                    sendCheck.AddRange(streams.Keys);
+                    // prematurely check if the wrapped socket has buffered data
+                    // if any other were to be added Socket.Select would end immediately as the sockets can send data
+                    foreach (KeyValuePair<Socket, TcpSocket> v in streams)
+                    {
+                        TcpSocket ts = v.Value;
+                        if (ts.WritableEnded)
+                            endWrite.Add(v.Key);
+                        else if (ts.OutgoingBuffered > 0)
+                            sendCheck.Add(v.Key);
+                        else if (ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
+                            ts.FireTimeout();
+                    }
                     endRead.Clear(); endWrite.Clear(); endError.Clear();
-
-                    if (recvCheck.Count == 0 || sendCheck.Count == 0) continue;
 
                     // execute long-polling
                     Socket.Select(recvCheck, sendCheck, errorCheck, POLL_TIME);
+                    if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
 
                     // check receiving
                     for (int i = 0; i < recvCheck.Count; i++)
@@ -153,15 +157,7 @@ namespace CSSockets.Tcp
                     {
                         Socket s = sendCheck[i];
                         TcpSocket ts = streams[s];
-                        if (endRead.Contains(s) || endError.ContainsKey(s)) continue;
-                        if (ts.WritableEnded) { endWrite.Add(s); continue; }
-                        if (ts.OutgoingBuffered == 0)
-                        {
-                            // check timing out
-                            if (ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
-                                ts.FireTimeout();
-                            continue;
-                        }
+                        if (endError.ContainsKey(s)) continue;
                         byte[] data = ts.ReadOutgoing();
                         s.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
                         if (code == SocketError.Interrupted) endWrite.Add(s);
@@ -185,7 +181,7 @@ namespace CSSockets.Tcp
                         streams.Remove(s.Key);
                     }
                 }
-                OnThreadEnd(this);
+                TcpSocketIOHandler.OnThreadEnd(this);
             }
         }
     }

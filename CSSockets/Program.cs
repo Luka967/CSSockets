@@ -20,7 +20,7 @@ namespace CSSockets
     {
         static void Main(string[] args)
         {
-            TcpSocketStressTest(args);
+            TcpSocketDormancyTest(args);
         }
 
         static void WebSocketFramingTest(string[] args)
@@ -534,6 +534,35 @@ namespace CSSockets
                 client.End();
             };
             client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420));
+            Console.ReadKey();
+        }
+
+        static void TcpSocketDormancyTest(string[] args)
+        {
+            IPEndPoint ep = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 420);
+            TcpListener listener = new TcpListener();
+            listener.Bind(ep);
+            listener.OnConnection += (server) =>
+            {
+                Console.WriteLine("SERVER OPENED");
+                server.CanTimeout = true;
+                server.TimeoutAfter = new TimeSpan(0, 1, 0);
+                server.OnClose += () => Console.WriteLine("SERVER CLOSED");
+                server.OnTimeout += () =>
+                {
+                    Console.WriteLine("SERVER TIMEOUT");
+                    server.End();
+                };
+            };
+            listener.Start();
+            TcpSocket client = new TcpSocket();
+            client.OnOpen += () =>
+            {
+                Console.WriteLine("CLIENT OPENED");
+                client.Write(new byte[] { 1, 2, 3, 4, 5 });
+                client.OnClose += () => Console.WriteLine("CLIENT CLOSED");
+            };
+            client.Connect(ep);
             Console.ReadKey();
         }
 

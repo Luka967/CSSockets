@@ -69,7 +69,12 @@ namespace CSSockets.WebSockets
             if (State == TcpSocketState.Closed) return;
             switch (message.Opcode)
             {
-                case 1: OnString?.Invoke(Encoding.UTF8.GetString(message.Data)); break;
+                case 1:
+                    string str;
+                    try { str = Encoding.UTF8.GetString(message.Data); }
+                    catch (ArgumentException) { ForciblyClose(); return; }
+                    OnString?.Invoke(str);
+                    break;
                 case 2: OnBinary?.Invoke(message.Data); break;
                 case 8:
                     ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);

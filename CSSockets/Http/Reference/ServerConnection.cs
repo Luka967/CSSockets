@@ -86,13 +86,13 @@ namespace CSSockets.Http.Reference
                     {
                         End();
                         Base.End();
-                        break;
+                        return;
                     }
                     // check if upgrading
                     if (Upgrading)
                     {
                         End();
-                        break;
+                        return;
                     }
                 }
             }

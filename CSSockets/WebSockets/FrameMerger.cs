@@ -15,7 +15,7 @@ namespace CSSockets.WebSockets
         private byte Opcode { get; set; } = 0;
         private Queue<byte[]> DataQueue { get; } = new Queue<byte[]>();
         private long DataLength { get; set; } = 0;
-        private object DeflateLock { get; } = new object();
+        private object MergeLock { get; } = new object();
 
         private Queue<Message> MessageQueue { get; } = new Queue<Message>();
         public int QueuedCount => MessageQueue.Count;
@@ -32,10 +32,12 @@ namespace CSSockets.WebSockets
             if (Opcode != 0 && frame.Opcode != 0)
                 return FrameMergeResponse.OpcodeOnNonFin;
             if (frame.Opcode != 0) Opcode = frame.Opcode;
-
-            DataQueue.Enqueue(frame.Payload);
-            DataLength += frame.PayloadLength;
-            if (frame.FIN) Deflate();
+            lock (MergeLock)
+            {
+                DataQueue.Enqueue(frame.Payload);
+                DataLength += frame.PayloadLength;
+                if (frame.FIN) Deflate();
+            }
             return FrameMergeResponse.Valid;
         }
 
@@ -50,26 +52,23 @@ namespace CSSockets.WebSockets
 
         private void Deflate()
         {
-            lock (DeflateLock)
+            byte[] merged = new byte[DataLength];
+            for (long i = 0; i < DataLength;)
             {
-                byte[] merged = new byte[DataLength];
-                for (long i = 0; i < DataLength;)
-                {
-                    DataQueue.Dequeue(out byte[] next);
-                    Frame.ArrayCopy(next, 0, merged, i, next.LongLength);
-                    i += next.LongLength;
-                }
-                Message m = new Message(Opcode, merged);
-                if (OnOutput != null) OnOutput(m);
-                else MessageQueue.Enqueue(m);
-                DataLength = 0; Opcode = 0;
+                DataQueue.Dequeue(out byte[] next);
+                Frame.ArrayCopy(next, 0, merged, i, next.LongLength);
+                i += next.LongLength;
             }
+            Message m = new Message(Opcode, merged);
+            if (OnOutput != null) OnOutput(m);
+            else MessageQueue.Enqueue(m);
+            DataLength = 0; Opcode = 0;
         }
 
         public void End()
         {
             ThrowIfEnded();
-            lock (DeflateLock)
+            lock (MergeLock)
             {
                 DataQueue.End();
                 MessageQueue.End();

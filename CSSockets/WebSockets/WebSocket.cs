@@ -11,8 +11,6 @@ namespace CSSockets.WebSockets
     public delegate void CloseMessageHandler(ushort code, string reason);
     abstract public class WebSocket : ICorkable, IPausable
     {
-        static int a = 0;
-        int id = ++a;
         public TcpSocket Base { get; set; }
         public TcpSocketState State => Base.State;
         public bool Paused => Base.Paused;

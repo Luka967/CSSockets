@@ -33,7 +33,7 @@ namespace CSSockets.WebSockets
         protected override void AnswerClose(ushort code, string reason)
         {
             Send(new Frame(true, 8, false, BitConverter.GetBytes(code), false, false, false));
-            if (!Base.Ended) Base.End();
+            InitiateClose(code, reason);
         }
         protected override void AnswerPing(byte[] data)
             => Send(new Frame(true, 10, false, data, false, false, false));
@@ -67,7 +67,7 @@ namespace CSSockets.WebSockets
         protected override void AnswerClose(ushort code, string reason)
         {
             Send(new Frame(true, 8, true, BitConverter.GetBytes(code), false, false, false));
-            if (!Base.Ended) Base.End();
+            InitiateClose(code, reason);
         }
         protected override void AnswerPing(byte[] data)
             => Send(new Frame(true, 10, true, data, false, false, false));

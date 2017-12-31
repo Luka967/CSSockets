@@ -11,6 +11,8 @@ namespace CSSockets.WebSockets
     public delegate void CloseMessageHandler(ushort code, string reason);
     abstract public class WebSocket : ICorkable, IPausable
     {
+        static int a = 0;
+        int id = ++a;
         public TcpSocket Base { get; set; }
         public TcpSocketState State => Base.State;
         public bool Paused => Base.Paused;
@@ -108,13 +110,13 @@ namespace CSSockets.WebSockets
         }
         protected void InitiateClose(ushort code, string reason)
         {
-            Base.OnEnd -= OnSurpriseEnd;
+            Base.OnClose -= OnSurpriseEnd;
             Base.End();
             FireClose(code, reason);
         }
         protected void ForciblyClose()
         {
-            Base.OnEnd -= OnSurpriseEnd;
+            Base.OnClose -= OnSurpriseEnd;
             Base.Terminate();
             FireClose(0, null);
         }

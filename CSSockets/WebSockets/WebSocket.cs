@@ -22,8 +22,7 @@ namespace CSSockets.WebSockets
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
         public RequestHead RequestHead { get; }
-        private bool CalledClose { get; set; }
-        private bool CloseLock { get; }
+        protected bool CalledClose { get; set; }
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;

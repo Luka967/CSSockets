@@ -32,7 +32,11 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            Send(new Frame(true, 8, false, BitConverter.GetBytes(code), false, false, false));
+            if (CalledClose) return;
+            byte[] payload = new byte[2 + reason.Length];
+            payload[0] = (byte)(code >> 8);
+            payload[1] = (byte)(code & 255);
+            Send(new Frame(true, 8, false, payload, false, false, false));
             InitiateClose(code, reason);
         }
         protected override void AnswerPing(byte[] data)
@@ -66,7 +70,11 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            Send(new Frame(true, 8, true, BitConverter.GetBytes(code), false, false, false));
+            if (CalledClose) return;
+            byte[] payload = new byte[2 + reason.Length];
+            payload[0] = (byte)(code >> 8);
+            payload[1] = (byte)(code & 255);
+            Send(new Frame(true, 8, true, payload, false, false, false));
             InitiateClose(code, reason);
         }
         protected override void AnswerPing(byte[] data)

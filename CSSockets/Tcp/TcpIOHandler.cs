@@ -1,4 +1,7 @@
-﻿using System;
+﻿//#define DEBUG_TCPIO
+
+using System;
+using CSSockets.Base;
 using System.Threading;
 using System.Net.Sockets;
 using System.Collections.Generic;
@@ -9,7 +12,7 @@ namespace CSSockets.Tcp
 {
     internal static class TcpSocketIOHandler
     {
-        private const int POLL_TIME = 100;
+        private const int POLL_TIME = 1000;
         private const int THREAD_MAX_SOCKETS = 32;
 
         private static List<IOThread> _threads = new List<IOThread>();
@@ -101,18 +104,28 @@ namespace CSSockets.Tcp
 
                 while (Running)
                 {
+#if DEBUG_TCPIO
+                    Lapwatch w = new Lapwatch();
+                    w.Start();
+#endif
                     // insert new
                     while (QueuedNew.TryDequeue(out TcpSocket ts))
                     {
                         gotFirstSocket = true;
                         streams.Add(ts.Base, ts);
                     }
+#if DEBUG_TCPIO
+                    Console.WriteLine("queue new - {0:F2}ms", w.Lap().TotalMilliseconds);
+#endif
                     // terminate requesting
                     while (QueuedTerm.TryDequeue(out TcpSocket ts))
                     {
                         ts.SocketControl(null, false, true, false, false, false);
                         streams.Remove(ts.Base);
                     }
+#if DEBUG_TCPIO
+                    Console.WriteLine("terminate execute - {0:F2}ms", w.Lap().TotalMilliseconds);
+#endif
                     // close requesting
                     while (QueuedCloseProgress.TryDequeue(out TcpSocket ts))
                     {
@@ -125,6 +138,9 @@ namespace CSSockets.Tcp
                         if (!ts.WritableEnded) ts.SocketControl(null, false, false, false, false, true);
                         else ts.SocketControl(null, false, false, true, false, false);
                     }
+#if DEBUG_TCPIO
+                    Console.WriteLine("close execute - {0:F2}ms", w.Lap().TotalMilliseconds);
+#endif
 
                     // update count & shut down if none
                     if ((SocketCount = streams.Count) == 0 && QueuedNew.Count == 0 && gotFirstSocket)
@@ -144,10 +160,19 @@ namespace CSSockets.Tcp
                             ts.FireTimeout();
                     }
                     endRead.Clear(); endWrite.Clear(); endError.Clear();
+#if DEBUG_TCPIO
+                    Console.WriteLine("update lists - {0:F2}ms", w.Lap().TotalMilliseconds);
+#endif
 
                     if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
                     // execute long-polling
+#if DEBUG_TCPIO
+                    Console.WriteLine("run poll on {0:00}r {1:00}s {2:00}e & time {3}", recvCheck.Count, sendCheck.Count, errorCheck.Count, POLL_TIME);
+#endif
                     Socket.Select(recvCheck, sendCheck, errorCheck, POLL_TIME);
+#if DEBUG_TCPIO
+                    Console.WriteLine("poll callback with {0:00}r {1:00}s {2:00}e & time {3} - {4:F2}ms", recvCheck.Count, sendCheck.Count, errorCheck.Count, POLL_TIME, w.Lap().TotalMilliseconds);
+#endif
                     if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
 
                     // check receiving
@@ -162,6 +187,9 @@ namespace CSSockets.Tcp
                         else if (code != SocketError.Success) endError.Add(s, code);
                         else ts.WriteIncoming(data);
                     }
+#if DEBUG_TCPIO
+                    Console.WriteLine("check recv - {1:F2}ms", recvCheck.Count, w.Lap().TotalMilliseconds);
+#endif
                     // check sending
                     for (int i = 0; i < sendCheck.Count; i++)
                     {
@@ -173,23 +201,35 @@ namespace CSSockets.Tcp
                         if (code == SocketError.Interrupted) endWrite.Add(s);
                         else if (code != SocketError.Success) endError.Add(s, code);
                     }
-
+#if DEBUG_TCPIO
+                    Console.WriteLine("check send - {1:F2}ms", sendCheck.Count, w.Lap().TotalMilliseconds);
+#endif
                     // end readable
                     foreach (Socket s in endRead)
                         if (streams[s].SocketControl(null, false, false, false, true, false))
                             // fully ended
                             streams.Remove(s);
+#if DEBUG_TCPIO
+                    Console.WriteLine("end {0:00} readables - {1:F2}ms", endRead.Count, w.Lap().TotalMilliseconds);
+#endif
                     // end writable
                     foreach (Socket s in endWrite)
                         if (streams[s].SocketControl(null, false, false, false, false, true))
                             // fully ended
                             streams.Remove(s);
+#if DEBUG_TCPIO
+                    Console.WriteLine("end {0:00} writables - {1:F2}ms", endWrite.Count, w.Lap().TotalMilliseconds);
+#endif
                     // end terminated/crashed
                     foreach (KeyValuePair<Socket, SocketError> s in endError)
                     {
                         streams[s.Key].SocketControl(new SocketException((int)s.Value), false, false, false, false, false);
                         streams.Remove(s.Key);
                     }
+#if DEBUG_TCPIO
+                    Console.WriteLine("terminate {0:00} - {1:F2}ms", endError.Count, w.Lap().TotalMilliseconds);
+                    w.Stop();
+#endif
                 }
                 TcpSocketIOHandler.OnThreadEnd(this);
             }

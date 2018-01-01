@@ -116,6 +116,12 @@ namespace CSSockets.Tcp
                     // close requesting
                     while (QueuedCloseProgress.TryDequeue(out TcpSocket ts))
                     {
+                        if (ts.OutgoingBuffered > 0)
+                        {
+                            // send last data fragment
+                            byte[] data = ts.ReadOutgoing();
+                            ts.Base.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
+                        }
                         if (!ts.WritableEnded) ts.SocketControl(null, false, false, false, false, true);
                         else ts.SocketControl(null, false, false, true, false, false);
                     }

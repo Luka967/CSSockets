@@ -27,13 +27,14 @@ namespace CSSockets.WebSockets
         public FrameMergeResponse MergeFrame(Frame frame)
         {
             ThrowIfEnded();
-            if (Opcode == 0 && frame.Opcode == 0)
-                return FrameMergeResponse.ContinuationOnNoOpcode;
-            if (Opcode != 0 && frame.Opcode != 0)
-                return FrameMergeResponse.OpcodeOnNonFin;
-            if (frame.Opcode != 0) Opcode = frame.Opcode;
             lock (MergeLock)
             {
+                if (Opcode == 0 && frame.Opcode == 0)
+                    return FrameMergeResponse.ContinuationOnNoOpcode;
+                if (Opcode != 0 && frame.Opcode != 0)
+                    return FrameMergeResponse.OpcodeOnNonFin;
+                if (frame.Opcode != 0)
+                    Opcode = frame.Opcode;
                 DataQueue.Enqueue(frame.Payload);
                 DataLength += frame.PayloadLength;
                 if (frame.FIN) Deflate();

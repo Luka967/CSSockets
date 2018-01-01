@@ -11,6 +11,8 @@ namespace CSSockets.WebSockets
     public delegate void CloseMessageHandler(ushort code, string reason);
     abstract public class WebSocket : ICorkable, IPausable
     {
+        static int i = 0;
+        int id = ++i;
         public TcpSocket Base { get; set; }
         public TcpSocketState State => Base.State;
         public bool Paused => Base.Paused;
@@ -21,6 +23,7 @@ namespace CSSockets.WebSockets
         }
         public RequestHead RequestHead { get; }
         private bool CalledClose { get; set; }
+        private bool CloseLock { get; }
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -108,13 +111,17 @@ namespace CSSockets.WebSockets
         }
         protected void InitiateClose(ushort code, string reason)
         {
+            if (CalledClose) return;
             Base.OnClose -= OnSurpriseEnd;
+            Base.Pause();
             Base.End();
             FireClose(code, reason);
         }
         protected void ForciblyClose()
         {
+            if (CalledClose) return;
             Base.OnClose -= OnSurpriseEnd;
+            Base.Pause();
             Base.Terminate();
             FireClose(0, null);
         }

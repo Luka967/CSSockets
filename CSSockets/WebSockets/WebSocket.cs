@@ -22,7 +22,7 @@ namespace CSSockets.WebSockets
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
         public RequestHead RequestHead { get; }
-        protected bool CalledClose { get; set; }
+        protected bool FiredClose { get; private set; }
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -98,8 +98,8 @@ namespace CSSockets.WebSockets
 
         private void FireClose(ushort code, string reason)
         {
-            if (CalledClose) return;
-            CalledClose = true;
+            if (FiredClose) return;
+            FiredClose = true;
             OnClose?.Invoke(code, reason);
         }
         private void OnSurpriseEnd() => FireClose(0, null);
@@ -110,7 +110,8 @@ namespace CSSockets.WebSockets
         }
         protected void InitiateClose(ushort code, string reason)
         {
-            if (CalledClose) return;
+            if (FiredClose) return;
+            FiredClose = true;
             Base.OnClose -= OnSurpriseEnd;
             Base.Pause();
             Base.End();
@@ -118,7 +119,8 @@ namespace CSSockets.WebSockets
         }
         protected void ForciblyClose()
         {
-            if (CalledClose) return;
+            if (FiredClose) return;
+            FiredClose = true;
             Base.OnClose -= OnSurpriseEnd;
             Base.Pause();
             Base.Terminate();

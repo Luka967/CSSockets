@@ -32,7 +32,7 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            if (CalledClose) return;
+            if (FiredClose) return;
             byte[] payload = new byte[2 + reason.Length];
             payload[0] = (byte)(code >> 8);
             payload[1] = (byte)(code & 255);
@@ -70,7 +70,7 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            if (CalledClose) return;
+            if (FiredClose) return;
             byte[] payload = new byte[2 + reason.Length];
             payload[0] = (byte)(code >> 8);
             payload[1] = (byte)(code & 255);

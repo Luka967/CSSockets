@@ -113,6 +113,7 @@ namespace CSSockets.Tcp
                     {
                         gotFirstSocket = true;
                         streams.Add(ts.Base, ts);
+                        ts.Base.NoDelay = true;
                     }
 #if DEBUG_TCPIO
                     Console.WriteLine("queue new - {0:F2}ms", w.Lap().TotalMilliseconds);
@@ -129,14 +130,22 @@ namespace CSSockets.Tcp
                     // close requesting
                     while (QueuedCloseProgress.TryDequeue(out TcpSocket ts))
                     {
-                        if (ts.OutgoingBuffered > 0)
+                        if (!ts.WritableEnded)
                         {
-                            // send last data fragment
-                            byte[] data = ts.ReadOutgoing();
-                            ts.Base.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
+                            if (ts.OutgoingBuffered > 0)
+                            {
+                                // send last data fragment
+                                byte[] data = ts.ReadOutgoing();
+                                ts.Base.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
+                            }
+                            if (ts.SocketControl(null, false, false, false, false, true))
+                                streams.Remove(ts.Base);
                         }
-                        if (!ts.WritableEnded) ts.SocketControl(null, false, false, false, false, true);
-                        else ts.SocketControl(null, false, false, true, false, false);
+                        else
+                        {
+                            ts.SocketControl(null, false, false, true, false, false);
+                            streams.Remove(ts.Base);
+                        }
                     }
 #if DEBUG_TCPIO
                     Console.WriteLine("close execute - {0:F2}ms", w.Lap().TotalMilliseconds);

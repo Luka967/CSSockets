@@ -169,7 +169,8 @@ namespace CSSockets.Tcp
 #if DEBUG_TCPIO
                         Console.WriteLine("Poll: will close: {0} (is server: {1})", ts.WritableEnded || ts.OutgoingBuffered == 0, ts.isServer);
 #endif
-                        if (!ts.WritableEnded && ts.OutgoingBuffered > 0)
+                        if (ts.Ended) ts.IsClosing = false; // already ended during i/o handling
+                        else if (!ts.WritableEnded && ts.OutgoingBuffered > 0)
                             // schedule for next time
                             nextTimeEnding.Add(ts);
                         else
@@ -194,10 +195,11 @@ namespace CSSockets.Tcp
                     {
                         Socket s = sockets[i];
                         TcpSocket ts = wraps[s];
-                        if (!ts.ReadableEnded) checkR.Add(s);
+                        bool stillOpen = true;
                         if (!ts.WritableEnded && ts.OutgoingBuffered > 0) checkW.Add(s);
                         else if (!ts.WritableEnded && ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
-                            _RemoveSocket(ts, ts.FireTimeout());
+                            stillOpen = _RemoveSocket(ts, ts.FireTimeout());
+                        if (!ts.ReadableEnded && stillOpen) checkR.Add(s);
                     }
 #if DEBUG_TCPIO
                     Console.WriteLine("Poll: selecting {0}r {1}w {2}e", checkR.Count, checkW.Count, checkE.Count);

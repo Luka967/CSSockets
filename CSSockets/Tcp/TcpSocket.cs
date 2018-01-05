@@ -150,8 +150,7 @@ namespace CSSockets.Tcp
                 if (!silent) Base.Dispose();
                 if (!ReadableEnded) Readable.End();
                 if (!WritableEnded) Writable.End();
-                if (ex != null)
-                    OnError?.Invoke(ex);
+                if (ex != null) OnError?.Invoke(ex);
                 OnClose?.Invoke();
                 return true;
             }
@@ -249,9 +248,9 @@ namespace CSSockets.Tcp
                 case TcpSocketState.Closed:
                     throw new InvalidOperationException("This socket is closed");
                 case TcpSocketState.Opening:
-//#if DEBUG_TCPIO
+                    //#if DEBUG_TCPIO
                     Console.WriteLine("Control: terminate on opening state (is server: {0})", isServer);
-//#endif
+                    //#endif
                     State = TcpSocketState.Closed;
                     break;
                 case TcpSocketState.Open:

@@ -35,8 +35,6 @@ namespace CSSockets.Http.Reference
         private StringQueue StringQueue { get; set; } = null;
 
         private bool IsSet { get; set; } = false;
-        private bool IsCompressionSet { get; set; } = false;
-        private bool HasProcessedData { get; set; } = false;
         private BodyParserState State { get; set; } = BodyParserState.Dormant;
 
         public bool TrySetFor(MessageHead head)
@@ -67,8 +65,8 @@ namespace CSSockets.Http.Reference
                 switch (compression)
                 {
                     case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); break;
-                    case CompressionType.Gzip: ContentTransform = new GzipDecompressor(); IsCompressionSet = true; break;
-                    case CompressionType.Deflate: ContentTransform = new DeflateDecompressor(); IsCompressionSet = true; break;
+                    case CompressionType.Gzip: ContentTransform = new GzipDecompressor(); break;
+                    case CompressionType.Deflate: ContentTransform = new DeflateDecompressor(); break;
                     case CompressionType.Compress: return false;
                     default: return false;
                 }

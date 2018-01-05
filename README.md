@@ -4,8 +4,7 @@ A WIP implementation of event-based sockets for .NET Core 2.0.
 Includes highly scalable, wrapped TCP, low-level HTTP and raw WebSockets.
 Data handling is done with Node.js-inspired reinvented streams - see CSSockets.Streams.
 Designed to use the least amount of threads that deliver excellent performance.
-Since this is a shaky but functioning library, bug hunting is encouraged. There are basic tests already though.
-See the tests (the CSSockets.Program class) if you want to use this library to get a head start.
+This is a shaky but functioning library - bug hunting is encouraged.
 
 This project uses object-oriented programming to a large extent to enable heavy customization:
   - All streams inherit either interfaces directly or base classes.
@@ -49,7 +48,7 @@ Implementations:
     - [X] Chunked
     - [X] Compressed binary
     - [X] Compressed chunked
-  - [X] HTTP connections
+  - [ ] HTTP connections
     - [ ] Client-side connection
     - [X] Server-side connection
   - [X] Support for custom upgrading
@@ -57,7 +56,7 @@ Implementations:
 - [ ] WebSockets
   - [X] Message parsing
   - [X] Message serialization
-  - [X] WebSocket connections
+  - [ ] WebSocket connections
     - [ ] Client-side connection
     - [X] Server-side connection
   - [ ] Support for custom extensions

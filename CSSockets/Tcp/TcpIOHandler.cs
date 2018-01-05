@@ -7,13 +7,14 @@ using System.Net.Sockets;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using NonBlockingSocketQueue = System.Collections.Generic.Queue<CSSockets.Tcp.TcpSocket>;
 
 namespace CSSockets.Tcp
 {
-    internal static class TcpSocketIOHandler
+    public static class TcpSocketIOHandler
     {
         private const int POLL_TIME = 1000;
-        private const int THREAD_MAX_SOCKETS = 32;
+        private const int THREAD_MAX_SOCKETS = 1024;
 
         private static List<IOThread> _threads = new List<IOThread>();
         public static ReadOnlyCollection<IOThread> Threads
@@ -55,7 +56,7 @@ namespace CSSockets.Tcp
                     best = empty;
                 }
             }
-            return best.Enqueue(socket);
+            return best.EnqueueNew(socket);
         }
 
         private static void OnThreadEnd(IOThread t)
@@ -63,184 +64,189 @@ namespace CSSockets.Tcp
             lock (_threadModifyLock) _threads.Remove(t);
         }
 
-        internal class IOThread
+        public class IOThread
         {
             private ConcurrentQueue<TcpSocket> QueuedNew = new ConcurrentQueue<TcpSocket>();
-            private ConcurrentQueue<TcpSocket> QueuedTerm = new ConcurrentQueue<TcpSocket>();
-            private ConcurrentQueue<TcpSocket> QueuedCloseProgress = new ConcurrentQueue<TcpSocket>();
-            private bool gotFirstSocket = false;
+            private NonBlockingSocketQueue QueuedTerminate = new NonBlockingSocketQueue();
+            private NonBlockingSocketQueue QueuedClose = new NonBlockingSocketQueue();
+            private object terminateLock = new object(), closeLock = new object();
 
             internal volatile bool Running = true;
             internal volatile int SocketCount = 0;
+            internal bool gotFirstSocket = false;
 
-            public IOThread() => new Thread(PollT) { IsBackground = true, Name = "TCP I/O Thread" }.Start();
+            public IOThread() => new Thread(Poll) { Name = "TCP I/O thread" }.Start();
 
-            public IOThread Enqueue(TcpSocket socket)
+            public IOThread EnqueueNew(TcpSocket socket)
             {
+                if (socket.Ended)
+                {
+                    gotFirstSocket = true;
+                    return this;
+                }
                 socket.IOHandler = this;
+                socket.Base.NoDelay = true;
+                socket.Base.Blocking = false;
                 QueuedNew.Enqueue(socket);
                 return this;
             }
 
             public IOThread EnqueueTerminate(TcpSocket socket)
             {
-                QueuedTerm.Enqueue(socket);
+                lock (terminateLock)
+                {
+                    if (socket.IsTerminating) return this;
+                    socket.IsTerminating = true;
+                    QueuedTerminate.Enqueue(socket);
+                }
                 return this;
             }
 
-            public IOThread EnqueueCloseProgress(TcpSocket socket)
+            public IOThread EnqueueClose(TcpSocket socket)
             {
-                QueuedCloseProgress.Enqueue(socket);
+                lock (closeLock)
+                {
+                    if (socket.IsClosing) return this;
+                    socket.IsClosing = true;
+                    QueuedClose.Enqueue(socket);
+                }
                 return this;
             }
 
-            private void PollT()
+            List<Socket> sockets = new List<Socket>();
+            List<TcpSocket> nextTimeEnding = new List<TcpSocket>();
+            Dictionary<Socket, TcpSocket> wraps = new Dictionary<Socket, TcpSocket>();
+            List<Socket> checkR = new List<Socket>(), checkW = new List<Socket>(), checkE = new List<Socket>();
+            List<Socket> endR = new List<Socket>();
+            List<(Socket, SocketError)> endE = new List<(Socket, SocketError)>();
+
+            private void _AddSocket(TcpSocket ts)
             {
-                Dictionary<Socket, TcpSocket> streams = new Dictionary<Socket, TcpSocket>();
+#if DEBUG_TCPIO
+                Console.WriteLine("_AddSocket: added a socket (is server: {0})", ts.isServer);
+#endif
+                gotFirstSocket = true;
+                sockets.Add(ts.Base);
+                wraps.Add(ts.Base, ts);
+                SocketCount++;
+                ts.FireOpen();
+            }
+            private bool _RemoveSocket(TcpSocket ts, bool should)
+            {
+                if (!should) return false;
+#if DEBUG_TCPIO
+                Console.WriteLine("_RemoveSocket: removed a socket (is server: {0})", ts.isServer);
+#endif
+                sockets.Remove(ts.Base);
+                wraps.Remove(ts.Base);
+                SocketCount--;
+                return true;
+            }
 
-                List<Socket> recvCheck = new List<Socket>(), sendCheck = new List<Socket>(), errorCheck = new List<Socket>();
-                HashSet<Socket> endRead = new HashSet<Socket>(), endWrite = new HashSet<Socket>();
-                Dictionary<Socket, SocketError> endError = new Dictionary<Socket, SocketError>();
-
-                while (Running)
+            private void Poll()
+            {
+                while (true)
                 {
 #if DEBUG_TCPIO
-                    Lapwatch w = new Lapwatch();
-                    w.Start();
+                    Console.WriteLine("\nPoll: socket count is {0}", SocketCount);
+                    Console.WriteLine("Poll: adding {0}", QueuedNew.Count);
 #endif
-                    // insert new
                     while (QueuedNew.TryDequeue(out TcpSocket ts))
+                        _AddSocket(ts);
+#if DEBUG_TCPIO
+                    Console.WriteLine("Poll: terminating {0}", QueuedTerminate.Count);
+#endif
+                    while (QueuedTerminate.TryDequeue(out TcpSocket ts))
                     {
-                        gotFirstSocket = true;
-                        streams.Add(ts.Base, ts);
-                        ts.Base.NoDelay = true;
+                        _RemoveSocket(ts, ts.Control(null, false, true, false, false));
+                        ts.IsTerminating = false;
                     }
 #if DEBUG_TCPIO
-                    Console.WriteLine("queue new - {0:F2}ms", w.Lap().TotalMilliseconds);
+                    Console.WriteLine("Poll: closing {0}", QueuedClose.Count);
 #endif
-                    // terminate requesting
-                    while (QueuedTerm.TryDequeue(out TcpSocket ts))
+                    while (QueuedClose.TryDequeue(out TcpSocket ts))
                     {
-                        ts.SocketControl(null, false, true, false, false, false);
-                        streams.Remove(ts.Base);
-                    }
 #if DEBUG_TCPIO
-                    Console.WriteLine("terminate execute - {0:F2}ms", w.Lap().TotalMilliseconds);
+                        Console.WriteLine("Poll: will close: {0} (is server: {1})", ts.WritableEnded || ts.OutgoingBuffered == 0, ts.isServer);
 #endif
-                    // close requesting
-                    while (QueuedCloseProgress.TryDequeue(out TcpSocket ts))
-                    {
-                        if (!ts.WritableEnded)
-                        {
-                            if (ts.OutgoingBuffered > 0)
-                            {
-                                // send last data fragment
-                                byte[] data = ts.ReadOutgoing();
-                                ts.Base.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
-                            }
-                            if (ts.SocketControl(null, false, false, false, false, true))
-                                streams.Remove(ts.Base);
-                        }
+                        if (!ts.WritableEnded && ts.OutgoingBuffered > 0)
+                            // schedule for next time
+                            nextTimeEnding.Add(ts);
                         else
                         {
-                            ts.SocketControl(null, false, false, true, false, false);
-                            streams.Remove(ts.Base);
+                            _RemoveSocket(ts, ts.Control(null, false, false, false, true));
+                            ts.IsClosing = false;
                         }
                     }
 #if DEBUG_TCPIO
-                    Console.WriteLine("close execute - {0:F2}ms", w.Lap().TotalMilliseconds);
+                    Console.WriteLine("Poll: socket count is now {0}", SocketCount);
 #endif
+                    if (SocketCount == 0 && gotFirstSocket) break;
 
-                    // update count & shut down if none
-                    if ((SocketCount = streams.Count) == 0 && QueuedNew.Count == 0 && gotFirstSocket)
-                        break;
+                    checkR.Clear(); endR.Clear();
+                    checkW.Clear();
+                    endE.Clear();
+                    for (int i = 0, l = nextTimeEnding.Count; i < l; i++)
+                        QueuedClose.Enqueue(nextTimeEnding[i]);
+                    nextTimeEnding.Clear();
 
-                    // update lists
-                    recvCheck.Clear(); sendCheck.Clear(); errorCheck.Clear();
-                    recvCheck.AddRange(streams.Keys);
-                    // prematurely check if the wrapped socket has buffered data
-                    // if any other were to be added Socket.Select would end immediately as the sockets can send data
-                    foreach (KeyValuePair<Socket, TcpSocket> v in streams)
+                    for (int i = 0, l = sockets.Count; i < l; i++)
                     {
-                        TcpSocket ts = v.Value;
-                        if (ts.WritableEnded) endWrite.Add(v.Key);
-                        else if (ts.OutgoingBuffered > 0) sendCheck.Add(v.Key);
-                        else if (ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
-                            ts.FireTimeout();
+                        Socket s = sockets[i];
+                        TcpSocket ts = wraps[s];
+                        if (!ts.ReadableEnded) checkR.Add(s);
+                        if (!ts.WritableEnded && ts.OutgoingBuffered > 0) checkW.Add(s);
+                        else if (!ts.WritableEnded && ts.CanTimeout && DateTime.UtcNow - ts.LastActivityTime > ts.TimeoutAfter)
+                            _RemoveSocket(ts, ts.FireTimeout());
                     }
-                    endRead.Clear(); endWrite.Clear(); endError.Clear();
 #if DEBUG_TCPIO
-                    Console.WriteLine("update lists - {0:F2}ms", w.Lap().TotalMilliseconds);
+                    Console.WriteLine("Poll: selecting {0}r {1}w {2}e", checkR.Count, checkW.Count, checkE.Count);
 #endif
+                    if (checkR.Count == 0 && checkW.Count == 0) continue;
 
-                    if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
-                    // execute long-polling
+                    Socket.Select(checkR, checkW, checkE, POLL_TIME);
 #if DEBUG_TCPIO
-                    Console.WriteLine("run poll on {0:00}r {1:00}s {2:00}e & time {3}", recvCheck.Count, sendCheck.Count, errorCheck.Count, POLL_TIME);
+                    Console.WriteLine("Poll: select ended; {0}r {1}w {2}e", checkR.Count, checkW.Count, checkE.Count);
 #endif
-                    Socket.Select(recvCheck, sendCheck, errorCheck, POLL_TIME);
-#if DEBUG_TCPIO
-                    Console.WriteLine("poll callback with {0:00}r {1:00}s {2:00}e & time {3} - {4:F2}ms", recvCheck.Count, sendCheck.Count, errorCheck.Count, POLL_TIME, w.Lap().TotalMilliseconds);
-#endif
-                    if (recvCheck.Count == 0 && sendCheck.Count == 0) continue;
+                    if (checkR.Count == 0 && checkW.Count == 0) continue;
 
-                    // check receiving
-                    for (int i = 0; i < recvCheck.Count; i++)
+                    for (int i = 0, l = checkR.Count; i < l; i++)
                     {
-                        Socket s = recvCheck[i];
-                        TcpSocket ts = streams[s];
-                        if (ts.ReadableEnded) { endRead.Add(s); continue; }
+                        Socket s = checkR[i];
+                        TcpSocket ts = wraps[s];
+                        if (s.Available == 0) { endR.Add(s); continue; }
                         byte[] data = new byte[s.Available];
-                        int len = s.Receive(data, 0, data.Length, SocketFlags.None, out SocketError code);
-                        if (code == SocketError.Interrupted || len == 0) endRead.Add(s);
-                        else if (code != SocketError.Success) endError.Add(s, code);
-                        else ts.WriteIncoming(data);
+                        s.Receive(data, 0, data.Length, SocketFlags.None, out SocketError code);
+                        if (code == SocketError.Success) ts.WriteIncoming(data);
+                        else endE.Add((s, code));
                     }
-#if DEBUG_TCPIO
-                    Console.WriteLine("check recv - {1:F2}ms", recvCheck.Count, w.Lap().TotalMilliseconds);
-#endif
-                    // check sending
-                    for (int i = 0; i < sendCheck.Count; i++)
+
+                    for (int i = 0, l = checkW.Count; i < l; i++)
                     {
-                        Socket s = sendCheck[i];
-                        TcpSocket ts = streams[s];
-                        if (endError.ContainsKey(s)) continue;
+                        Socket s = checkW[i];
+                        TcpSocket ts = wraps[s];
                         byte[] data = ts.ReadOutgoing();
                         s.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
-                        if (code == SocketError.Interrupted) endWrite.Add(s);
-                        else if (code != SocketError.Success) endError.Add(s, code);
+                        if (code != SocketError.Success) endE.Add((s, code));
                     }
 #if DEBUG_TCPIO
-                    Console.WriteLine("check send - {1:F2}ms", sendCheck.Count, w.Lap().TotalMilliseconds);
+                    Console.WriteLine("Poll: ending {0}r 0w {1}e", endR.Count, endE.Count);
 #endif
-                    // end readable
-                    foreach (Socket s in endRead)
-                        if (streams[s].SocketControl(null, false, false, false, true, false))
-                            // fully ended
-                            streams.Remove(s);
-#if DEBUG_TCPIO
-                    Console.WriteLine("end {0:00} readables - {1:F2}ms", endRead.Count, w.Lap().TotalMilliseconds);
-#endif
-                    // end writable
-                    foreach (Socket s in endWrite)
-                        if (streams[s].SocketControl(null, false, false, false, false, true))
-                            // fully ended
-                            streams.Remove(s);
-#if DEBUG_TCPIO
-                    Console.WriteLine("end {0:00} writables - {1:F2}ms", endWrite.Count, w.Lap().TotalMilliseconds);
-#endif
-                    // end terminated/crashed
-                    foreach (KeyValuePair<Socket, SocketError> s in endError)
+
+                    for (int i = 0, l = endR.Count; i < l; i++)
                     {
-                        streams[s.Key].SocketControl(new SocketException((int)s.Value), false, false, false, false, false);
-                        streams.Remove(s.Key);
+                        TcpSocket ts = wraps[endR[i]];
+                        _RemoveSocket(ts, ts.Control(null, false, false, true, false));
                     }
-#if DEBUG_TCPIO
-                    Console.WriteLine("terminate {0:00} - {1:F2}ms", endError.Count, w.Lap().TotalMilliseconds);
-                    w.Stop();
-#endif
+
+                    for (int i = 0, l = endE.Count; i < l; i++)
+                    {
+                        (Socket, SocketError) item = endE[i];
+                        TcpSocket ts = wraps[item.Item1];
+                        _RemoveSocket(ts, ts.Control(new SocketException((int)item.Item2), false, false, false, false));
+                    }
                 }
-                TcpSocketIOHandler.OnThreadEnd(this);
+                OnThreadEnd(this);
             }
         }
     }

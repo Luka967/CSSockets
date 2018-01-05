@@ -2,6 +2,7 @@
 using CSSockets.Tcp;
 using System.Threading;
 using CSSockets.Http.Reference;
+using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Base
 {
@@ -34,7 +35,7 @@ namespace CSSockets.Http.Base
             BodyParser = new BodyParser();
             BodySerializer = new BodySerializer();
             OnMessage = messageHandler;
-            new Thread(ProcessorThread) { IsBackground = true }.Start();
+            new Thread(ProcessorThread) { Name = "HTTP pipeline thread" }.Start();
             Base.OnClose += End;
         }
 
@@ -89,6 +90,12 @@ namespace CSSockets.Http.Base
                 Buffer.BlockCopy(trail2, 0, trail, index, trail2.Length);
             }
             return trail;
+        }
+
+        virtual public void CompressBody(CompressionType compressionType)
+        {
+            if (Terminating || Upgrading) throw new InvalidOperationException("Cannot set body compression while the connection is not open");
+            BodySerializer.Compress(compressionType);
         }
     }
 }

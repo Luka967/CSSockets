@@ -1,4 +1,6 @@
-﻿using CSSockets.Streams;
+﻿using System;
+using CSSockets.Tcp;
+using CSSockets.Streams;
 using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Base
@@ -46,6 +48,16 @@ namespace CSSockets.Http.Base
         // head accessors
         public HttpVersion HttpVersion => Head.Version;
         public string this[string name] => Head.Headers[name];
+
+        virtual public void SetTimeout(TimeSpan span, TcpSocketControlHandler callback)
+        {
+            Connection.Base.CanTimeout = true;
+            Connection.Base.OnTimeout += () =>
+            {
+                callback();
+                Connection.Base.End();
+            };
+        }
 
         // ending HttpIncomingMessage terminates the connection
         public void End()

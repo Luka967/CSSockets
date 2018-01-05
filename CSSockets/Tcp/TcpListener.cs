@@ -16,6 +16,7 @@ namespace CSSockets.Tcp
         public event TcpListenerIncomingHandler OnConnection;
 
         public TcpListener() { }
+
         private void CreateBase()
         {
             if (Base != null) Base.Dispose();
@@ -35,7 +36,7 @@ namespace CSSockets.Tcp
             CreateBase();
             Base.Bind(BindEndPoint);
             Base.Listen(BacklogSize);
-            new Thread(ListenIteration) { IsBackground = true }.Start();
+            new Thread(ListenThread) { Name = "TCP listener thread" }.Start();
         }
         public void Stop()
         {
@@ -44,19 +45,21 @@ namespace CSSockets.Tcp
             Listening = false;
             Base.Close();
         }
+        private void Stop(object sender, EventArgs e) => Stop();
 
-        private void ListenIteration()
+        private void ListenThread()
         {
             while (true)
             {
                 Socket newSocket;
                 try { newSocket = Base.Accept(); }
-                catch (SocketException)
-                { return; }
-                catch (ObjectDisposedException)
-                { return; }
-                OnConnection?.Invoke(new TcpSocket(newSocket));
+                catch (SocketException) { return; }
+                catch (ObjectDisposedException) { return; }
+                TcpSocket socket = new TcpSocket(newSocket);
+                socket.Owner = this;
             }
         }
+
+        internal void FireConnection(TcpSocket socket) => OnConnection?.Invoke(socket);
     }
 }

@@ -14,12 +14,11 @@ namespace CSSockets.Http.Reference
         private static readonly byte[] LAST_CHUNK = Encoding.ASCII.GetBytes("0" + CRLF + CRLF);
 
         private UnifiedDuplex ContentTransform { get; set; } = null;
-        public bool IsCompressing { get; private set; } = false;
+        public bool IsCompressionSet { get; private set; } = false;
         public CompressionLevel CompressionLevel { get; set; } = CompressionLevel.Optimal;
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
-        public CompressionType ContentEncoding { get; private set; } = CompressionType.Unknown;
+        public CompressionType Compression { get; private set; } = CompressionType.Unknown;
         public int ContentLength { get; private set; } = -1;
-        private int Processed { get; set; } = -1;
 
         private bool IsSet { get; set; } = false;
 
@@ -29,7 +28,7 @@ namespace CSSockets.Http.Reference
             BodyType? bodyType = BodyType.TryDetectFor(head);
             if (bodyType == null) return false;
 
-            CompressionType content = bodyType.Value.CompressionType;
+            CompressionType compression = bodyType.Value.CompressionType;
             TransferEncoding transfer = bodyType.Value.TransferEncoding;
             int contentLength = bodyType.Value.ContentLength;
 
@@ -37,21 +36,35 @@ namespace CSSockets.Http.Reference
 
             IsSet = true;
             TransferEncoding = transfer;
-            ContentEncoding = content;
             ContentLength = contentLength;
-            switch (content)
+            if (Compression != CompressionType.Unknown) return true;
+            Compression = compression;
+            switch (compression)
             {
-                case CompressionType.None: IsCompressing = false; ContentTransform = new RawUnifiedDuplex(); break;
-                case CompressionType.Gzip: IsCompressing = true; ContentTransform = new GzipCompressor(CompressionLevel); break;
-                case CompressionType.Deflate: IsCompressing = true; ContentTransform = new DeflateCompressor(CompressionLevel); break;
-                case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
-                default: throw new ArgumentException("Got Unknown as content encoding");
+                case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); IsCompressionSet = false; break;
+                case CompressionType.Gzip: ContentTransform = new GzipCompressor(CompressionLevel); IsCompressionSet = true; break;
+                case CompressionType.Deflate: ContentTransform = new DeflateCompressor(CompressionLevel); IsCompressionSet = true; break;
+                case CompressionType.Compress: return false;
+                default: return false;
             }
             return true;
         }
         public void SetFor(MessageHead head)
         {
             if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
+        }
+        public void Compress(CompressionType compressionType)
+        {
+            if (IsSet) throw new InvalidOperationException("Explicitly setting compression type must be performed before headers get sent");
+            Compression = compressionType;
+            switch (compressionType)
+            {
+                case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); IsCompressionSet = false; break;
+                case CompressionType.Gzip: ContentTransform = new GzipCompressor(CompressionLevel); IsCompressionSet = true; break;
+                case CompressionType.Deflate: ContentTransform = new DeflateCompressor(CompressionLevel); IsCompressionSet = true; break;
+                case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as compression type");
+                default: throw new ArgumentException("Got Unknown as compression type");
+            }
         }
 
         public override byte[] Read() => Bread();
@@ -75,6 +88,7 @@ namespace CSSockets.Http.Reference
                 case TransferEncoding.None: throw new InvalidOperationException("TransferEncoding is None");
                 case TransferEncoding.Raw:
                     if (data == null) break;
+                    ContentLength += data.Length;
                     Bhandle(data);
                     break;
                 case TransferEncoding.Chunked:
@@ -85,10 +99,14 @@ namespace CSSockets.Http.Reference
                         Bhandle(CRLF_BYTES);
                         Bhandle(data);
                         Bhandle(CRLF_BYTES);
+                        ContentLength += str.Length + 2 + data.Length + 2;
                     }
                     else
+                    {
                         // last chunk
                         Bhandle(LAST_CHUNK);
+                        ContentLength += 5;
+                    }
                     break;
             }
         }
@@ -97,7 +115,7 @@ namespace CSSockets.Http.Reference
         {
             ThrowIfEnded();
             if (!IsSet) throw new InvalidOperationException("Not set");
-            if (IsCompressing)
+            if (IsCompressionSet)
             {
                 // compressed data footer
                 CompressorDuplex compressor = ContentTransform as CompressorDuplex;
@@ -107,11 +125,10 @@ namespace CSSockets.Http.Reference
             WriteTransformed(null);
             IsSet = false;
             ContentTransform.End();
-            IsCompressing = false;
+            IsCompressionSet = false;
             TransferEncoding = TransferEncoding.None;
-            ContentEncoding = CompressionType.Unknown;
+            Compression = CompressionType.Unknown;
             ContentLength = -1;
-            Processed = 0;
         }
 
         public override void End()

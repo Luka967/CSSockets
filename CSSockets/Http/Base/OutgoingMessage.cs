@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using CSSockets.Streams;
+using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Base
 {
@@ -62,6 +63,8 @@ namespace CSSockets.Http.Base
             get => Head.Headers[name];
             set => SetHeader(name, value);
         }
+
+        virtual public void SetCompression(CompressionType compressionType) => Connection.CompressBody(compressionType);
 
         // ending HttpIncomingMessage ends/sends the response
         public void End()

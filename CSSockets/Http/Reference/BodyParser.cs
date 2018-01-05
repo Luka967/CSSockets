@@ -26,15 +26,17 @@ namespace CSSockets.Http.Reference
 
         public UnifiedDuplex ContentTransform { get; private set; } = null;
         public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
-        public CompressionType ContentEncoding { get; private set; } = CompressionType.Unknown;
+        public CompressionType CompressionType { get; private set; } = CompressionType.Unknown;
         public event ControlHandler OnEnd;
 
-        public int ContentLength { get; set; } = -1; // -1 = unknown, 0 = none, 1+ = has body
+        public int ContentLength { get; set; } = -1; // -1 = unknown, 0 = none, 1+ = determined
         public int CurrentReadBytes { get; set; } = 0;
         private int chunkLen = 0, chunkIndex = 0;
         private StringQueue StringQueue { get; set; } = null;
 
         private bool IsSet { get; set; } = false;
+        private bool IsCompressionSet { get; set; } = false;
+        private bool HasProcessedData { get; set; } = false;
         private BodyParserState State { get; set; } = BodyParserState.Dormant;
 
         public bool TrySetFor(MessageHead head)
@@ -61,14 +63,14 @@ namespace CSSockets.Http.Reference
             }
             if (transfer != TransferEncoding.None)
             {
-                ContentEncoding = compression;
+                CompressionType = compression;
                 switch (compression)
                 {
                     case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); break;
-                    case CompressionType.Gzip: ContentTransform = new GzipDecompressor(); break;
-                    case CompressionType.Deflate: ContentTransform = new DeflateDecompressor(); break;
-                    case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as content encoding");
-                    default: throw new ArgumentException("Got Unknown as content encoding");
+                    case CompressionType.Gzip: ContentTransform = new GzipDecompressor(); IsCompressionSet = true; break;
+                    case CompressionType.Deflate: ContentTransform = new DeflateDecompressor(); IsCompressionSet = true; break;
+                    case CompressionType.Compress: return false;
+                    default: return false;
                 }
             }
             IsSet = true;
@@ -186,9 +188,10 @@ namespace CSSockets.Http.Reference
             chunkLen = chunkIndex = CurrentReadBytes = 0;
             State = BodyParserState.Dormant;
             TransferEncoding = TransferEncoding.None;
-            ContentEncoding = CompressionType.Unknown;
+            CompressionType = CompressionType.Unknown;
             ContentLength = -1;
             IsSet = false;
+            HasProcessedData = false;
         }
 
         public byte[] ReadExcess() => Writable.Read();

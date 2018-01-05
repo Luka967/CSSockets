@@ -1,7 +1,7 @@
 ﻿using CSSockets.Http.Base;
-using CSSockets.Http.Reference;
+using CSSockets.Http.Primitives;
 
-namespace CSSockets.Http.Primitives
+namespace CSSockets.Http.Reference
 {
     public struct BodyType
     {
@@ -29,7 +29,6 @@ namespace CSSockets.Http.Primitives
                 contentLen = len;
             }
             string joined = (head.Headers["Transfer-Encoding"] ?? "");
-            if (head.Headers["Content-Encoding"] != null) joined += ", " + head.Headers["Content-Encoding"];
             if (joined == "")
             {
                 if (contentLen == -1 && head is RequestHead)

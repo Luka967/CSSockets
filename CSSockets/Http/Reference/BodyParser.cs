@@ -189,7 +189,6 @@ namespace CSSockets.Http.Reference
             CompressionType = CompressionType.Unknown;
             ContentLength = -1;
             IsSet = false;
-            HasProcessedData = false;
         }
 
         public byte[] ReadExcess() => Writable.Read();

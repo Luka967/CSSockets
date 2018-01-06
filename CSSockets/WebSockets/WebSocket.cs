@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net;
 using System.Text;
 using CSSockets.Tcp;
 using CSSockets.Streams;
@@ -22,6 +23,7 @@ namespace CSSockets.WebSockets
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
         public RequestHead RequestHead { get; }
+        public IPAddress RemoteAddress => Base.RemoteAddress;
         protected bool FiredClose { get; private set; }
 
         public event BinaryMessageHandler OnBinary;

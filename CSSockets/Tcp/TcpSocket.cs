@@ -52,18 +52,20 @@ namespace CSSockets.Tcp
         internal readonly bool isServer = false;
         internal bool IsTerminating { get; set; }
         internal bool IsClosing { get; set; }
-        internal TcpListener Owner { get; set; }
+        internal TcpListener Owner { get; }
 
         public TcpSocket()
             : this(new Socket(SocketType.Stream, ProtocolType.Tcp)) { isServer = false; }
-        public TcpSocket(Socket socket)
+        internal TcpSocket(Socket socket, TcpListener owner)
         {
             if (socket.ProtocolType != ProtocolType.Tcp)
                 throw new SocketException((int)SocketError.ProtocolType);
             Base = socket;
+            Owner = owner;
             isServer = true;
             if (socket.Connected) BeginOps();
         }
+        public TcpSocket(Socket socket) : this(socket, null) { }
 
         private void UpdateRemoteAddress()
         {

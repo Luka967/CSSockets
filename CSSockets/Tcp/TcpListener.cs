@@ -55,8 +55,7 @@ namespace CSSockets.Tcp
                 try { newSocket = Base.Accept(); }
                 catch (SocketException) { return; }
                 catch (ObjectDisposedException) { return; }
-                TcpSocket socket = new TcpSocket(newSocket);
-                socket.Owner = this;
+                TcpSocket socket = new TcpSocket(newSocket, this);
             }
         }
 

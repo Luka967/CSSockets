@@ -54,7 +54,7 @@ namespace CSSockets.Http.Base
         {
             HeadParser.Unpipe();
             BodyParser.Unpipe();
-            if (!Base.ReadableEnded && !Upgrading)
+            if (!Base.WritableEnded && !Upgrading)
                 Base.Unpipe();
             HeadSerializer.Unpipe();
             BodySerializer.Unpipe();

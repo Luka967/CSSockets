@@ -16,6 +16,7 @@ namespace CSSockets.WebSockets
             payload[0] = (byte)(code >> 8);
             payload[1] = (byte)(code & 255);
             Buffer.BlockCopy(reasonBuf, 0, payload, 2, reasonBuf.Length);
+            Console.WriteLine("closed");
             Send(new Frame(true, 8, false, payload, false, false, false));
             InitiateClose(code, reason);
         }
@@ -32,7 +33,6 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            if (FiredClose) return;
             byte[] payload = new byte[2 + reason.Length];
             payload[0] = (byte)(code >> 8);
             payload[1] = (byte)(code & 255);
@@ -70,7 +70,6 @@ namespace CSSockets.WebSockets
 
         protected override void AnswerClose(ushort code, string reason)
         {
-            if (FiredClose) return;
             byte[] payload = new byte[2 + reason.Length];
             payload[0] = (byte)(code >> 8);
             payload[1] = (byte)(code & 255);

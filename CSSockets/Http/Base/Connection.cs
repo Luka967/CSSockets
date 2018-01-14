@@ -1,6 +1,7 @@
 ﻿using System;
 using CSSockets.Tcp;
 using System.Threading;
+using CSSockets.Streams;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Primitives;
 
@@ -10,7 +11,7 @@ namespace CSSockets.Http.Base
     public delegate void HttpMessageHandler<Incoming, Outgoing>(IncomingMessage<Incoming, Outgoing> request, OutgoingMessage<Incoming, Outgoing> response)
         where Incoming : MessageHead, new() where Outgoing : MessageHead, new();
 
-    abstract public class Connection<Incoming, Outgoing>
+    abstract public class Connection<Incoming, Outgoing> : IEndable
         where Incoming : MessageHead, new() where Outgoing : MessageHead, new()
     {
         protected bool Terminating { get; private set; }
@@ -25,6 +26,9 @@ namespace CSSockets.Http.Base
         virtual protected HeadSerializer<Outgoing> HeadSerializer { get; }
         virtual protected BodyParser BodyParser { get; }
         virtual protected BodySerializer BodySerializer { get; }
+
+        protected object DisposeLock { get; } = new object();
+        public bool Ended { get; private set; }
 
         public Connection(TcpSocket socket, HeadParser<Incoming> headParser, HeadSerializer<Outgoing> headSerializer,
             HttpMessageHandler<Incoming, Outgoing> messageHandler)
@@ -50,19 +54,23 @@ namespace CSSockets.Http.Base
                 throw new ArgumentException("Could not determine body transfer type from the provided head");
         }
 
-        virtual protected void End()
+        virtual public void End()
         {
-            HeadParser.Unpipe();
-            BodyParser.Unpipe();
-            if (!Base.WritableEnded && !Upgrading)
-                Base.Unpipe();
-            HeadSerializer.Unpipe();
-            BodySerializer.Unpipe();
-            HeadParser.End();
-            HeadSerializer.End();
-            BodyParser.End();
-            BodySerializer.End();
-            OnEnd?.Invoke();
+            lock (DisposeLock)
+            {
+                HeadParser.Unpipe();
+                BodyParser.Unpipe();
+                if (!Base.WritableEnded && !Upgrading)
+                    Base.Unpipe();
+                HeadSerializer.Unpipe();
+                BodySerializer.Unpipe();
+                HeadParser.End();
+                HeadSerializer.End();
+                BodyParser.End();
+                BodySerializer.End();
+                OnEnd?.Invoke();
+                Ended = true;
+            }
         }
 
         virtual public void Terminate()

@@ -35,14 +35,16 @@ namespace CSSockets.Http.Base
 
         public Incoming Head { get; set; }
         public bool Cancelled { get; internal set; }
+        public bool HasBody { get; }
         public Connection<Incoming, Outgoing> Connection { get; }
         public event ControlHandler OnEnd;
 
-        public IncomingMessage(Connection<Incoming, Outgoing> connection, Incoming head)
+        public IncomingMessage(Connection<Incoming, Outgoing> connection, Incoming head, bool hasBody)
         {
             Connection = connection;
             BodyBuffer = new RawUnifiedDuplex();
             Head = head;
+            HasBody = hasBody;
         }
 
         // head accessors

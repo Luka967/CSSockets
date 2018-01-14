@@ -54,7 +54,7 @@ namespace CSSockets.Http.Reference
                     BodySerializer.Pipe(Base);
 
                     // create request
-                    ClientRequest req = new ClientRequest(this, head);
+                    ClientRequest req = new ClientRequest(this, head, BodyParser.ContentLength == -1 || BodyParser.ContentLength > 0);
                     ServerResponse res = new ServerResponse(this);
                     CurrentMessage = (req, res);
                     // pipe body buffers
@@ -81,15 +81,22 @@ namespace CSSockets.Http.Reference
                     // message processed
                     CurrentMessage = (null, null);
 
+                    // if no body length is set, disconnect
+                    if (BodySerializer.TransferEncoding == TransferEncoding.Raw)
+                    {
+                        End();
+                        Base.End();
+                        return;
+                    }
                     // check for disconnection
-                    if (head.Headers["Connection"] == "close")
+                    else if (head.Headers["Connection"] == "close")
                     {
                         End();
                         Base.End();
                         return;
                     }
                     // check if upgrading
-                    if (Upgrading)
+                    else if (Upgrading)
                     {
                         End();
                         return;
@@ -97,7 +104,7 @@ namespace CSSockets.Http.Reference
                 }
             }
             catch (ObjectDisposedException) { /* socket got disposed */ }
-            if (!HeadParser.Ended) End();
+            lock (DisposeLock) if (!Ended) End();
         }
     }
 }

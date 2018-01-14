@@ -82,7 +82,7 @@ namespace CSSockets.Http.Primitives
 
         public string this[string tokenKey]
         {
-            get => Get(tokenKey).Value;
+            get => Get(tokenKey)?.Value;
             set
             {
                 int index = GetIndexFor(tokenKey);

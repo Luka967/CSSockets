@@ -6,7 +6,7 @@ namespace CSSockets.Http.Reference
 {
     public class ClientRequest : IncomingMessage<RequestHead, ResponseHead>
     {
-        public ClientRequest(Connection<RequestHead, ResponseHead> connection, RequestHead head) : base(connection, head) { }
+        public ClientRequest(Connection<RequestHead, ResponseHead> connection, RequestHead head, bool hasBody) : base(connection, head, hasBody) { }
 
         // head accesors
         public Query Query => Head.Query;

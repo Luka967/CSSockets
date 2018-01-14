@@ -24,7 +24,7 @@ namespace CSSockets.WebSockets
         }
         public RequestHead RequestHead { get; }
         public IPAddress RemoteAddress => Base.RemoteAddress;
-        protected bool FiredClose { get; private set; }
+        protected bool SentClose { get; private set; } = false;
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -71,7 +71,7 @@ namespace CSSockets.WebSockets
 
         private void OnIncomingMessage(Message message)
         {
-            if (State == TcpSocketState.Closed) return;
+            if (SentClose) return;
             switch (message.Opcode)
             {
                 case 1:
@@ -84,7 +84,7 @@ namespace CSSockets.WebSockets
                 case 8:
                     ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
                     string reason = message.Data.Length >= 2 ? Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2) : null;
-                    OnClose?.Invoke(code, reason);
+                    FireClose(code, reason);
                     AnswerClose(code, reason);
                     break;
                 case 9: OnPing?.Invoke(message.Data); AnswerPing(message.Data); break;
@@ -98,12 +98,7 @@ namespace CSSockets.WebSockets
         virtual public void Pause() => Base.Pause();
         virtual public void Resume() => Base.Resume();
 
-        private void FireClose(ushort code, string reason)
-        {
-            if (FiredClose) return;
-            FiredClose = true;
-            OnClose?.Invoke(code, reason);
-        }
+        private void FireClose(ushort code, string reason) => OnClose?.Invoke(code, reason);
         private void OnSurpriseEnd() => FireClose(0, null);
         private void OnSocketEnd()
         {
@@ -112,17 +107,14 @@ namespace CSSockets.WebSockets
         }
         protected void InitiateClose(ushort code, string reason)
         {
-            if (FiredClose) return;
-            FiredClose = true;
             Base.OnClose -= OnSurpriseEnd;
             Base.Pause();
             Base.End();
             FireClose(code, reason);
+            SentClose = true;
         }
         protected void ForciblyClose()
         {
-            if (FiredClose) return;
-            FiredClose = true;
             Base.OnClose -= OnSurpriseEnd;
             Base.Pause();
             Base.Terminate();

@@ -71,6 +71,7 @@ namespace CSSockets.Http.Reference
                     default: return false;
                 }
             }
+            else ContentLength = 0;
             IsSet = true;
             return true;
         }

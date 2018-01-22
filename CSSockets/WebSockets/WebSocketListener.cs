@@ -18,10 +18,7 @@ namespace CSSockets.WebSockets
         public event ConnectionHandler OnConnection;
 
         public WebSocketListener(EndPoint listenEndpoint, HttpPath listenPath)
-        {
-            Base = new Listener(listenEndpoint, listenPath);
-            Base.OnRequest = OnRequest;
-        }
+            => Base = new Listener(listenEndpoint, listenPath) { OnRequest = OnRequest };
 
         private void OnRequest(ClientRequest req, ServerResponse res)
         {
@@ -86,9 +83,9 @@ namespace CSSockets.WebSockets
             res["Sec-WebSocket-Accept"] = str;
 
             byte[] trail = res.Upgrade();
-            ServerWebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head, trail);
+            ServerWebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head);
             OnConnection?.Invoke(ws);
-            ws.Base.Resume();
+            ws.WriteTrail(trail);
         }
 
         private void DropRequest(ServerResponse res, ushort code, string reason, string body, params Header[] otherHeaders)

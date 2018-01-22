@@ -1,4 +1,4 @@
-﻿using System;
+﻿using CSSockets.Streams;
 using System.Security.Cryptography;
 
 namespace CSSockets.WebSockets
@@ -38,50 +38,46 @@ namespace CSSockets.WebSockets
             Rng.GetBytes(Mask);
         }
 
-        public byte[] Serialize()
+        public void Serialize(IWritable to)
         {
             int payloadSerLen = PayloadLength >= 65536 ? 8 : PayloadLength >= 126 ? 2 : 0;
-            long len = 2 + payloadSerLen + (Masked ? 4 : 0) + PayloadLength, index = 0;
-            byte[] ret = new byte[len];
-            ret[index++] = (byte)(Opcode + (FIN ? 128 : 0) + (RSV1 ? 64 : 0) + (RSV2 ? 32 : 0) + (RSV3 ? 16 : 0));
+            WriteByte(to, (byte)(Opcode + (FIN ? 128 : 0) + (RSV1 ? 64 : 0) + (RSV2 ? 32 : 0) + (RSV3 ? 16 : 0)));
             switch (payloadSerLen)
             {
                 case 0:
-                    ret[index++] = (byte)((Masked ? 128 : 0) + PayloadLength);
+                    WriteByte(to, (byte)((Masked ? 128 : 0) + PayloadLength));
                     break;
                 case 2:
-                    ret[index++] = (byte)((Masked ? 128 : 0) + 126);
-                    ret[index++] = (byte)((PayloadLength >> 8) & 255);
-                    ret[index++] = (byte)(PayloadLength & 255);
+                    WriteByte(to, (byte)((Masked ? 128 : 0) + 126));
+                    WriteByte(to, (byte)((PayloadLength >> 8) & 255));
+                    WriteByte(to, (byte)(PayloadLength & 255));
                     break;
                 case 8:
-                    ret[index++] = (byte)((Masked ? 128 : 0) + 127);
-                    ret[index++] = (byte)((PayloadLength >> 56) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 48) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 40) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 32) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 24) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 16) & 255);
-                    ret[index++] = (byte)((PayloadLength >> 8) & 255);
-                    ret[index++] = (byte)(PayloadLength & 255);
+                    WriteByte(to, (byte)((Masked ? 128 : 0) + 127));
+                    WriteByte(to, (byte)((PayloadLength >> 56) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 48) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 40) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 32) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 24) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 16) & 255));
+                    WriteByte(to, (byte)((PayloadLength >> 8) & 255));
+                    WriteByte(to, (byte)(PayloadLength & 255));
                     break;
             }
             if (Masked)
             {
-                ArrayCopy(Mask, 0, ret, index, 4);
-                index += 4;
+                to.Write(Mask);
                 FlipMask();
-                ArrayCopy(Payload, 0, ret, index, PayloadLength);
-                FlipMask();
+                to.Write(Payload);
             }
-            else ArrayCopy(Payload, 0, ret, index, PayloadLength);
-            return ret;
+            else to.Write(Payload);
         }
+
+        private static void WriteByte(IWritable to, byte a) => to.Write(new byte[] { a });
 
         internal void FlipMask()
         {
-            for (long i = 0; i < PayloadLength; i++)
-                Payload[i] = (byte)(Payload[i] ^ Mask[i & 3]);
+            for (long i = 0; i < PayloadLength; i++) Payload[i] = (byte)(Payload[i] ^ Mask[i & 3]);
         }
 
         internal static void ArrayCopy(byte[] src, long srcBegin, byte[] dst, long dstBegin, long length)

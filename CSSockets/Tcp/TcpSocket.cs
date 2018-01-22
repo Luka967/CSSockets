@@ -104,10 +104,7 @@ namespace CSSockets.Tcp
                 Base.Dispose();
                 return;
             }
-            try
-            {
-                Base.EndConnect(ar);
-            }
+            try { Base.EndConnect(ar); }
             catch (SocketException ex)
             {
 #if DEBUG_TCPIO
@@ -250,9 +247,9 @@ namespace CSSockets.Tcp
                 case TcpSocketState.Closed:
                     throw new InvalidOperationException("This socket is closed");
                 case TcpSocketState.Opening:
-                    //#if DEBUG_TCPIO
+#if DEBUG_TCPIO
                     Console.WriteLine("Control: terminate on opening state (is server: {0})", isServer);
-                    //#endif
+#endif
                     State = TcpSocketState.Closed;
                     break;
                 case TcpSocketState.Open:

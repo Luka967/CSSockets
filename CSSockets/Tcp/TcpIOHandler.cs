@@ -13,8 +13,8 @@ namespace CSSockets.Tcp
 {
     public static class TcpSocketIOHandler
     {
-        private const int POLL_TIME = 1000;
-        private const int THREAD_MAX_SOCKETS = 1024;
+        public static int PollTime = 1000;
+        public static int SocketsPerThread = 48;
 
         private static List<IOThread> _threads = new List<IOThread>();
         public static ReadOnlyCollection<IOThread> Threads
@@ -49,7 +49,7 @@ namespace CSSockets.Tcp
                     if (best == null || best.SocketCount > curr.SocketCount)
                         best = curr;
                 }
-                if (best == null || best.SocketCount > THREAD_MAX_SOCKETS)
+                if (best == null || best.SocketCount > SocketsPerThread)
                 {
                     IOThread empty = new IOThread();
                     _threads.Add(empty);
@@ -171,7 +171,7 @@ namespace CSSockets.Tcp
 #endif
                         if (ts.Ended) ts.IsClosing = false; // already ended during i/o handling
                         else if (!ts.WritableEnded && ts.OutgoingBuffered > 0)
-                            // schedule for next time
+                            // has data to write - schedule for next time
                             nextTimeEnding.Add(ts);
                         else
                         {
@@ -206,7 +206,7 @@ namespace CSSockets.Tcp
 #endif
                     if (checkR.Count == 0 && checkW.Count == 0) continue;
 
-                    Socket.Select(checkR, checkW, checkE, POLL_TIME);
+                    Socket.Select(checkR, checkW, checkE, PollTime);
 #if DEBUG_TCPIO
                     Console.WriteLine("Poll: select ended; {0}r {1}w {2}e", checkR.Count, checkW.Count, checkE.Count);
 #endif

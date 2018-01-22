@@ -99,6 +99,7 @@ namespace CSSockets.Http.Reference
                     else if (Upgrading)
                     {
                         End();
+                        Base.Resume();
                         return;
                     }
                 }

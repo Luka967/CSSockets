@@ -10,21 +10,21 @@ namespace CSSockets.WebSockets
     public delegate void BinaryMessageHandler(byte[] data);
     public delegate void StringMessageHandler(string data);
     public delegate void CloseMessageHandler(ushort code, string reason);
-    abstract public class WebSocket : ICorkable, IPausable
+    abstract public class WebSocket : IPausable, ICorkable
     {
-        static int i = 0;
-        int id = ++i;
         public TcpSocket Base { get; set; }
         public TcpSocketState State => Base.State;
-        public bool Paused => Base.Paused;
-        public bool Corked => Base.Corked;
         protected void ThrowIfNotOpen()
         {
             if (State != TcpSocketState.Open) throw new InvalidOperationException("Cannot perform this operation as the socket is either disconnecting or not connected");
         }
         public RequestHead RequestHead { get; }
         public IPAddress RemoteAddress => Base.RemoteAddress;
-        protected bool SentClose { get; private set; } = false;
+        protected bool IsClosing { get; private set; } = false;
+        public bool Paused => Readable.Paused;
+        public bool Corked => Writable.Paused;
+        public int IncomingBuffered => Readable.Buffered;
+        public int OutgoingBuffered => Writable.Buffered;
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -32,21 +32,26 @@ namespace CSSockets.WebSockets
         public event BinaryMessageHandler OnPong;
         public event CloseMessageHandler OnClose;
 
-        protected FrameParser FrameParser { get; }
-        protected FrameMerger FrameMerger { get; }
+        protected FrameParser FrameParser { get; } = new FrameParser();
+        protected FrameMerger FrameMerger { get; } = new FrameMerger();
+        protected RawUnifiedDuplex Readable { get; } = new RawUnifiedDuplex();
+        protected RawUnifiedDuplex Writable { get; } = new RawUnifiedDuplex();
 
-        protected WebSocket(TcpSocket socket, RequestHead head, byte[] trail)
+        protected WebSocket(TcpSocket socket, RequestHead head)
         {
             Base = socket;
             Base.OnClose += OnSurpriseEnd;
             Base.OnClose += OnSocketEnd;
             RequestHead = head;
-            FrameParser = new FrameParser();
-            FrameMerger = new FrameMerger();
             FrameParser.OnOutput += OnIncomingFrame;
             FrameMerger.OnOutput += OnIncomingMessage;
+        }
+        internal void WriteTrail(byte[] trail)
+        {
             FrameParser.Write(trail);
-            Base.Pipe(FrameParser);
+            Base.Pipe(Readable);
+            Readable.Pipe(FrameParser);
+            Writable.Pipe(Base);
         }
 
         abstract protected bool IsValidFrame(Frame frame);
@@ -71,7 +76,7 @@ namespace CSSockets.WebSockets
 
         private void OnIncomingMessage(Message message)
         {
-            if (SentClose) return;
+            if (IsClosing) return;
             switch (message.Opcode)
             {
                 case 1:
@@ -84,7 +89,6 @@ namespace CSSockets.WebSockets
                 case 8:
                     ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
                     string reason = message.Data.Length >= 2 ? Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2) : null;
-                    FireClose(code, reason);
                     AnswerClose(code, reason);
                     break;
                 case 9: OnPing?.Invoke(message.Data); AnswerPing(message.Data); break;
@@ -93,10 +97,10 @@ namespace CSSockets.WebSockets
             }
         }
 
-        virtual public void Cork() => Base.Cork();
-        virtual public void Uncork() => Base.Uncork();
-        virtual public void Pause() => Base.Pause();
-        virtual public void Resume() => Base.Resume();
+        virtual public void Cork() => Writable.Pause();
+        virtual public void Uncork() => Writable.Resume();
+        virtual public void Pause() => Readable.Pause();
+        virtual public void Resume() => Readable.Resume();
 
         private void FireClose(ushort code, string reason) => OnClose?.Invoke(code, reason);
         private void OnSurpriseEnd() => FireClose(0, null);
@@ -104,6 +108,8 @@ namespace CSSockets.WebSockets
         {
             FrameParser.End();
             FrameMerger.End();
+            Readable.End();
+            Writable.End();
         }
         protected void InitiateClose(ushort code, string reason)
         {
@@ -111,7 +117,7 @@ namespace CSSockets.WebSockets
             Base.Pause();
             Base.End();
             FireClose(code, reason);
-            SentClose = true;
+            IsClosing = true;
         }
         protected void ForciblyClose()
         {
@@ -123,7 +129,8 @@ namespace CSSockets.WebSockets
         protected void Send(Frame frame)
         {
             ThrowIfNotOpen();
-            Base.Write(frame.Serialize());
+            if (IsClosing) return;
+            frame.Serialize(Writable);
         }
         abstract public void Send(byte[] data);
         abstract public void Send(string data);

@@ -11,7 +11,7 @@ namespace CSSockets.Streams
     {
         protected RawUnifiedDuplex Readable { get; } = new RawUnifiedDuplex();
         protected RawUnifiedDuplex Writable { get; } = new RawUnifiedDuplex();
-        protected object EndLock { get; } = new object();
+        protected object OpLock { get; } = new object();
 
         public bool Ended => Readable.Ended && Writable.Ended;
         public bool ReadableEnded => Readable.Ended;
@@ -41,8 +41,8 @@ namespace CSSockets.Streams
             remove => Readable.OnData -= value;
         }
 
-        virtual public void Pipe(IWritable to) => Readable.Pipe(to);
-        virtual public void Unpipe() => Readable.Unpipe();
+        virtual public void Pipe(IWritable to) { lock (OpLock) Readable.Pipe(to); }
+        virtual public void Unpipe() { lock (OpLock) Readable.Unpipe(); }
         virtual public void Unpipe(IReadable from)
         {
             if (from.PipedTo == this) from.Unpipe();
@@ -69,7 +69,7 @@ namespace CSSockets.Streams
         virtual protected void OnEnded() { }
         virtual protected void EndReadable()
         {
-            lock (EndLock)
+            lock (OpLock)
             {
                 Readable.End();
                 if (WritableEnded) OnEnded();
@@ -77,7 +77,7 @@ namespace CSSockets.Streams
         }
         virtual protected void EndWritable()
         {
-            lock (EndLock)
+            lock (OpLock)
             {
                 Writable.End();
                 if (ReadableEnded) OnEnded();

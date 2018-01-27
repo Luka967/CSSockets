@@ -114,7 +114,6 @@ namespace CSSockets.WebSockets
         protected void InitiateClose(ushort code, string reason)
         {
             Base.OnClose -= OnSurpriseEnd;
-            Base.Pause();
             Base.End();
             FireClose(code, reason);
             IsClosing = true;
@@ -122,9 +121,9 @@ namespace CSSockets.WebSockets
         protected void ForciblyClose()
         {
             Base.OnClose -= OnSurpriseEnd;
-            Base.Pause();
             Base.Terminate();
             FireClose(0, null);
+            IsClosing = true;
         }
         protected void Send(Frame frame)
         {

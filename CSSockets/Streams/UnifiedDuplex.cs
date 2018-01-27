@@ -181,15 +181,22 @@ namespace CSSockets.Streams
         }
         virtual public void Pipe(IWritable to)
         {
-            ThrowIfEnded();
-            PipedTo = to;
-            BtestNewPathing();
+            lock (BreadLock)
+                lock (BwriteLock)
+                {
+                    ThrowIfEnded();
+                    PipedTo = to;
+                    BtestNewPathing();
+                }
         }
         virtual public void Unpipe(IReadable from)
         {
-            ThrowIfEnded();
-            if (from.PipedTo == this) from.Unpipe();
-            else throw new InvalidOperationException("The specified readable is not piped to this writable");
+            lock (BreadLock) lock (BwriteLock)
+                {
+                    ThrowIfEnded();
+                    if (from.PipedTo == this) from.Unpipe();
+                    else throw new InvalidOperationException("The specified readable is not piped to this writable");
+                }
         }
         abstract public byte[] Read();
         abstract public byte[] Read(int length);
@@ -200,13 +207,16 @@ namespace CSSockets.Streams
             {
                 Paused = false;
                 Bblock.Set();
+                BtestNewPathing();
             }
-            BtestNewPathing();
         }
         public void Unpipe()
         {
-            ThrowIfEnded();
-            PipedTo = null;
+            lock (BreadLock)
+            {
+                ThrowIfEnded();
+                PipedTo = null;
+            }
         }
 
         abstract public void Write(byte[] data);

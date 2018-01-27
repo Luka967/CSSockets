@@ -57,8 +57,8 @@ namespace CSSockets.WebSockets
                         b = data[i++];
                         bool masked = (b & 128) == 128;
                         if (masked) Incoming.Mask = new byte[4];
-                        long payloadLen = b - (masked ? 128 : 0);
-                        if (payloadLen > 125)
+                        byte payloadLen = (byte)(b - (masked ? 128 : 0));
+                        if (payloadLen >= 126)
                         {
                             Temp2 = new byte[payloadLen == 126 ? 2 : 8];
                             State = FrameParserState.ExtendedLen;
@@ -74,7 +74,12 @@ namespace CSSockets.WebSockets
                         Frame.ArrayCopy(data, i, Temp2, Temp1, len);
                         Temp1 += len; i += len;
                         if (Temp2.LongLength != Temp1) break;
-                        Incoming.Payload = new byte[Temp1 == 8 ? BitConverter.ToUInt64(Temp2, 0) : BitConverter.ToUInt16(Temp2, 0)];
+                        len = 0;
+                        if (Temp2.LongLength == 2)
+                            len = Temp2[0] * 256 + Temp2[1];
+                        else len = Temp2[0] * 72057594037927940 + Temp2[1] * 281474976710656 + Temp2[2] * 1099511627776
+                                + Temp2[3] * 4294967296 + Temp2[4] * 16777216 + Temp2[5] * 65536 + Temp2[6] * 256 + Temp2[7];
+                        Incoming.Payload = new byte[len];
                         Temp1 = 0; Temp2 = null;
                         State = Incoming.Masked ? FrameParserState.Mask : FrameParserState.Payload;
                         break;

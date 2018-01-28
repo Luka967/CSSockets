@@ -20,7 +20,6 @@ namespace CSSockets.WebSockets
         }
         public RequestHead RequestHead { get; }
         public IPAddress RemoteAddress => Base.RemoteAddress;
-        protected bool IsClosing { get; private set; } = false;
         public bool Paused => Readable.Paused;
         public bool Corked => Writable.Paused;
         public int IncomingBuffered => Readable.Buffered;
@@ -32,6 +31,8 @@ namespace CSSockets.WebSockets
         public event BinaryMessageHandler OnPong;
         public event CloseMessageHandler OnClose;
 
+        protected bool IsClosing { get; private set; } = false;
+        protected object OpsLock { get; } = new object();
         protected FrameParser FrameParser { get; } = new FrameParser();
         protected FrameMerger FrameMerger { get; } = new FrameMerger();
         protected RawUnifiedDuplex Readable { get; } = new RawUnifiedDuplex();
@@ -76,24 +77,27 @@ namespace CSSockets.WebSockets
 
         private void OnIncomingMessage(Message message)
         {
-            if (IsClosing) return;
-            switch (message.Opcode)
+            lock (OpsLock)
             {
-                case 1:
-                    string str;
-                    try { str = Encoding.UTF8.GetString(message.Data); }
-                    catch (ArgumentException) { ForciblyClose(); return; }
-                    OnString?.Invoke(str);
-                    break;
-                case 2: OnBinary?.Invoke(message.Data); break;
-                case 8:
-                    ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
-                    string reason = message.Data.Length >= 2 ? Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2) : null;
-                    AnswerClose(code, reason);
-                    break;
-                case 9: OnPing?.Invoke(message.Data); AnswerPing(message.Data); break;
-                case 10: OnPong?.Invoke(message.Data); break;
-                default: ForciblyClose(); break;
+                if (IsClosing) return;
+                switch (message.Opcode)
+                {
+                    case 1:
+                        string str;
+                        try { str = Encoding.UTF8.GetString(message.Data); }
+                        catch (ArgumentException) { ForciblyClose(); return; }
+                        OnString?.Invoke(str);
+                        break;
+                    case 2: OnBinary?.Invoke(message.Data); break;
+                    case 8:
+                        ushort code = (ushort)(message.Data.Length == 0 ? 0 : message.Data[0] * 256u + message.Data[1]);
+                        string reason = message.Data.Length >= 2 ? Encoding.UTF8.GetString(message.Data, 2, message.Data.Length - 2) : null;
+                        AnswerClose(code, reason);
+                        break;
+                    case 9: OnPing?.Invoke(message.Data); AnswerPing(message.Data); break;
+                    case 10: OnPong?.Invoke(message.Data); break;
+                    default: ForciblyClose(); break;
+                }
             }
         }
 

@@ -77,6 +77,7 @@ namespace CSSockets.Tcp
                     Console.WriteLine("UpdateRemoteAddress: remote address is IP (is server: {0})", isServer);
 #endif
                     RemoteAddress = (Base.RemoteEndPoint as IPEndPoint).Address;
+                    if (RemoteAddress.IsIPv4MappedToIPv6) RemoteAddress = RemoteAddress.MapToIPv4();
                 }
                 else if (Base.RemoteEndPoint is DnsEndPoint)
                 {

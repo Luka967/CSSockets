@@ -1,151 +1,141 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.IO.Compression;
 
 namespace CSSockets.Streams
 {
-    abstract public class CompressorDuplex : UnifiedDuplex
+    public abstract class CompressorDuplex : UnifiedDuplex, IFinishable
     {
-        protected MemoryStream Cstream { get; }
-        protected Stream Caccessor { get; set; }
-        private object Clock { get; set; }
-        public CompressionLevel CompressionLevel { get; set; }
-        public bool Finished { get; private set; }
-        protected void ThrowIfFinished()
+        protected readonly MemoryStream Cbuffer = new MemoryStream();
+        protected Stream Cstream;
+        public CompressionLevel Level { get; }
+        public bool Finished { get; private set; } = false;
+
+        public CompressorDuplex(CompressionLevel level) => Level = level;
+
+        protected bool Coutput()
         {
-            if (Finished) throw new InvalidOperationException("Cannot perform this operation as the stream cannot write compressed data anymore");
+            lock (Rlock) lock (Wlock)
+                {
+                    Bhandle(Cbuffer.Pbuffer.Read(Cbuffer.Pbuffer.Length));
+                    return true;
+                }
         }
 
-        public CompressorDuplex(CompressionLevel compressionLevel)
+        public override bool Write(byte[] source)
         {
-            CompressionLevel = compressionLevel;
-            Cstream = new MemoryStream();
-            Clock = new object();
-            Finished = false;
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                if (Finished) return false;
+                Cstream.Write(source, 0, source.Length);
+                return Coutput();
+            }
         }
+        public override bool Write(byte[] source, ulong start, ulong end)
+            => Write(PrimitiveBuffer.Slice(source, start, end));
 
         public override byte[] Read() => Bread();
-        public override byte[] Read(int length) => Bread(length);
-        public override void Write(byte[] data)
+        public override ulong Read(byte[] destination) => Bread(destination);
+        public override byte[] Read(ulong length) => Bread(length);
+
+        public bool Finish()
         {
-            ThrowIfEnded();
-            ThrowIfFinished();
-            lock (Clock)
-            {
-                Caccessor.Write(data, 0, data.Length);
-                Cread();
-            }
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Finished) return false;
+                    Finished = true;
+                    Cstream.Dispose();
+                    bool result = Coutput();
+                    Cbuffer.Dispose();
+                    return result;
+                }
         }
-        private void Cread()
+        public override bool End()
         {
-            byte[] compressedChunk = new byte[Cstream.Length];
-            Cstream.Position = 0;
-            Cstream.Read(compressedChunk, 0, compressedChunk.Length);
-            Bhandle(compressedChunk);
-            Cstream.Position = 0;
-            Cstream.SetLength(0);
-        }
-        public void Finish()
-        {
-            ThrowIfEnded();
-            ThrowIfFinished();
-            lock (Clock)
-            {
-                Finished = true;
-                Caccessor.Dispose();
-                Cread();
-                Cstream.Dispose();
-            }
-        }
-        public override void End()
-        {
-            if (!Finished) Finish();
-            base.End();
+            lock (Rlock) lock (Wlock)
+                {
+                    if (!Finished) Finish();
+                    return base.End();
+                }
         }
     }
-
-    public class GzipCompressor : CompressorDuplex
-    {
-        public GzipCompressor(CompressionLevel compressionLevel) : base(compressionLevel)
-            => Caccessor = new GZipStream(Cstream, compressionLevel, true);
-    }
-
     public class DeflateCompressor : CompressorDuplex
     {
-        public DeflateCompressor(CompressionLevel compressionLevel) : base(compressionLevel)
-            => Caccessor = new DeflateStream(Cstream, compressionLevel, true);
+        public DeflateCompressor(CompressionLevel level) : base(level) => Cstream = new DeflateStream(Cbuffer, level, true);
+    }
+    public class GzipCompressor : CompressorDuplex
+    {
+        public GzipCompressor(CompressionLevel level) : base(level) => Cstream = new GZipStream(Cbuffer, level, true);
     }
 
-    abstract public class DecompressorDuplex : UnifiedDuplex
+    public abstract class DecompressorDuplex : UnifiedDuplex, IFinishable
     {
-        protected MemoryStream Cstream { get; }
-        protected Stream Caccessor { get; set; }
-        private byte[] Cbuffer { get; }
-        private object Clock { get; set; }
-        public CompressionLevel CompressionLevel { get; set; }
-        public bool Finished { get; private set; }
-        protected void ThrowIfFinished()
+        public const int DEFAULT_BUFFER_SIZE = 1024;
+
+        protected readonly MemoryStream Cbuffer = new MemoryStream();
+        protected Stream Cstream;
+        public bool Finished { get; private set; } = false;
+        public ulong BufferSize { get; set; } = DEFAULT_BUFFER_SIZE;
+
+        protected bool Coutput()
         {
-            if (Finished) throw new InvalidOperationException("Cannot perform this operation as the stream cannot write compressed data anymore");
+            lock (Rlock) lock (Wlock)
+                {
+                    byte[] data = new byte[BufferSize]; int read;
+                    while (true)
+                    {
+                        try { read = Cstream.Read(data, 0, data.Length); }
+                        catch (InvalidDataException) { return false; }
+                        if (read == 0) break;
+                        Bhandle(PrimitiveBuffer.Slice(data, 0, read));
+                    }
+                    return true;
+                }
         }
 
-        /// <param name="DCbufferSize">The decompression buffer size</param>
-        public DecompressorDuplex(int DCbufferSize = 1024)
+        public override bool Write(byte[] source)
         {
-            Cstream = new MemoryStream();
-            Cbuffer = new byte[DCbufferSize];
-            Clock = new object();
-            Finished = false;
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                if (Finished) return false;
+                Cbuffer.Write(source, 0, source.Length);
+                return Coutput();
+            }
         }
+        public override bool Write(byte[] source, ulong start, ulong end)
+            => Write(PrimitiveBuffer.Slice(source, start, end));
 
         public override byte[] Read() => Bread();
-        public override byte[] Read(int length) => Bread(length);
-        public override void Write(byte[] data)
+        public override ulong Read(byte[] destination) => Bread(destination);
+        public override byte[] Read(ulong length) => Bread(length);
+
+        public bool Finish()
         {
-            ThrowIfEnded();
-            lock (Clock)
-            {
-                ThrowIfFinished();
-                Cstream.Write(data, 0, data.Length);
-                Cstream.Position = 0;
-                int len;
-                len = Caccessor.Read(Cbuffer, 0, Cbuffer.Length);
-                while (len > 0)
+            lock (Rlock) lock (Wlock)
                 {
-                    byte[] spliced = new byte[len];
-                    Buffer.BlockCopy(Cbuffer, 0, spliced, 0, len);
-                    Bwrite(spliced);
-                    len = Caccessor.Read(Cbuffer, 0, Cbuffer.Length);
+                    if (Finished) return false;
+                    Finished = true;
+                    Cstream.Dispose();
+                    Cbuffer.Dispose();
+                    return true;
                 }
-            }
         }
-        public void Finish()
+        public override bool End()
         {
-            ThrowIfEnded();
-            lock (Clock)
-            {
-                ThrowIfFinished();
-                Finished = true;
-                Caccessor.Dispose();
-                Cstream.Dispose();
-            }
-        }
-        public override void End()
-        {
-            if (!Finished) Finish();
-            base.End();
+            lock (Rlock) lock (Wlock)
+                {
+                    if (!Finished) Finish();
+                    return base.End();
+                }
         }
     }
-
-    public class GzipDecompressor : DecompressorDuplex
-    {
-        public GzipDecompressor() : base()
-            => Caccessor = new GZipStream(Cstream, CompressionMode.Decompress, true);
-    }
-
     public class DeflateDecompressor : DecompressorDuplex
     {
-        public DeflateDecompressor() : base()
-            => Caccessor = new DeflateStream(Cstream, CompressionMode.Decompress, true);
+        public DeflateDecompressor() => Cstream = new DeflateStream(Cbuffer, CompressionMode.Decompress, true);
+    }
+    public class GzipDecompressor : DecompressorDuplex
+    {
+        public GzipDecompressor() => Cstream = new GZipStream(Cbuffer, CompressionMode.Decompress, true);
     }
 }

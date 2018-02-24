@@ -1,230 +1,230 @@
 ﻿using System;
-using System.IO;
 using System.Threading;
 
 namespace CSSockets.Streams
 {
     /// <summary>
-    /// Provides a basic, two-way memory-driven data pipe. This class can't be inherited.
+    /// Represents a duplex stream that shares a single data buffer for read/write operations.
     /// </summary>
-    abstract public class UnifiedDuplex : IUnifiedDuplex
+    public abstract class UnifiedDuplex : IDuplex, IPausable, IDrainable
     {
-        protected MemoryStream Bstream { get; } = new MemoryStream();
-        protected int BreadIndex { get; set; } = 0;
-        protected int BwaitIndex { get; set; } = -1;
-        protected int BwriteIndex { get; set; } = 0;
-        protected object BreadLock { get; } = new object();
-        protected object BwriteLock { get; } = new object();
-        protected EventWaitHandle Bblock { get; } = new EventWaitHandle(true, EventResetMode.ManualReset);
-        protected EventWaitHandle Bwait { get; } = new EventWaitHandle(false, EventResetMode.ManualReset);
-
-        public long ProcessedBytes { get; protected set; } = 0;
-        protected bool ThrowIfEnded()
-        {
-            if (Ended) throw new ObjectDisposedException("This stream has already ended.", innerException: null);
-            return false;
-        }
-        public void ThrowIfPipedOrAsync()
-        {
-            if (PipedTo != null) throw new InvalidOperationException("The operation will never succeed because the stream is piped");
-            else if (_OnData != null) throw new InvalidOperationException("The operation will never because an OnData event has been set");
-        }
-
-        public int Buffered => !ThrowIfEnded() ? BwriteIndex - BreadIndex : -1;
-        public IWritable PipedTo { get; private set; } = null;
         public bool Ended { get; private set; } = false;
-        public bool Paused { get; private set; } = false;
+        protected void ThrowIfEnded()
+        {
+            if (Ended) throw new InvalidOperationException("This stream has ended.");
+        }
 
-        private event DataHandler _OnData;
-        virtual public event DataHandler OnData
+        protected readonly PrimitiveBuffer buffer = new PrimitiveBuffer();
+
+        protected readonly object Rlock = new object();
+        protected readonly object Wlock = new object();
+        protected ulong? Rtarget { get; private set; } = null;
+        protected readonly AutoResetEvent Rwait = new AutoResetEvent(true);
+        protected readonly ManualResetEvent Rpause = new ManualResetEvent(true);
+
+        private bool Rpaused = false;
+        private IWritable Rpipe = null;
+        private ulong Wwritten = 0;
+
+        public ulong Buffered { get { ThrowIfEnded(); return buffer.Length; } }
+        public ulong ReadCount { get { ThrowIfEnded(); return WriteCount - Buffered; } }
+        public ulong WriteCount { get { ThrowIfEnded(); return Wwritten; } }
+
+        public bool IsPaused { get { ThrowIfEnded(); return Rpaused; } }
+        public IWritable PipedTo { get { ThrowIfEnded(); return Rpipe; } }
+
+        private event DataHandler _dataEvent;
+        public virtual event DataHandler OnData
         {
             add
             {
-                ThrowIfEnded();
-                _OnData += value;
-                BtestNewPathing();
+                lock (Rlock) lock (Wlock)
+                    {
+                        ThrowIfEnded();
+                        _dataEvent += value;
+                        BcheckNewPathing();
+                    }
             }
             remove
             {
-                ThrowIfEnded();
-                _OnData -= value;
+                lock (Rlock) lock (Wlock)
+                    {
+                        ThrowIfEnded();
+                        _dataEvent -= value;
+                    }
             }
         }
+        public virtual event ControlHandler OnEnd;
+        public virtual event ControlHandler OnFail;
+        public virtual event ControlHandler OnDrain;
 
-        protected void Bhandle(byte[] data)
+        public virtual bool Pause()
         {
-            ThrowIfEnded();
-            if (data == null) return;
-            ProcessedBytes += data.LongLength;
-            if (Paused) Bwrite(data);
-            else if (PipedTo != null)
-                PipedTo.Write(data);
-            else if (_OnData != null)
-                _OnData(data);
-            else Bwrite(data);
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    if (IsPaused) return false;
+                    Rpause.Reset();
+                    return true;
+                }
+        }
+        public virtual bool Resume()
+        {
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    if (!IsPaused) return false;
+                    Rpause.Set();
+                    BcheckNewPathing();
+                    return true;
+                }
         }
 
-        protected void BtestNewPathing()
+        public virtual bool Pipe(IWritable to)
         {
-            if (Paused || Buffered == 0) return;
-            Bhandle(Bread());
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    if (to == null) return false;
+                    Rpipe = to;
+                    BcheckNewPathing();
+                    return true;
+                }
+        }
+        public virtual bool Unpipe()
+        {
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    Rpipe = null;
+                    return true;
+                }
+        }
+        public virtual bool Unpipe(IReadable from)
+        {
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    if (from == null) return false;
+                    if (from.PipedTo != this) return false;
+                    from.Unpipe();
+                    return true;
+                }
         }
 
-        protected void Bwrite(byte[] data)
-        {
-            ThrowIfEnded();
-            lock (BwriteLock)
-            {
-                Bstream.Position = BwriteIndex;
-                Bstream.Write(data, 0, data.Length);
-                BwriteIndex += data.Length;
-                if (BreadIndex != -1 && BwriteIndex >= BreadIndex)
-                    Bwait.Set();
-            }
-        }
         protected byte[] Bread()
         {
-            ThrowIfEnded();
-            byte[] data;
-            if (Buffered == 0)
-            {
-                BwaitIndex = BwriteIndex + 1;
-                Bwait.WaitOne();
-                if (Ended) return null;
-                Bwait.Reset();
-                BwaitIndex = -1;
-            }
-            lock (BreadLock)
-            {
-                int length = Buffered;
-                data = new byte[length];
-                lock (BwriteLock)
-                {
-                    Bstream.Position = BreadIndex;
-                    Bstream.Read(data, 0, length);
-                    BreadIndex += length;
-                }
-            }
-            Btrim();
-            return data;
-        }
-        protected byte[] Bread(int length)
-        {
-            ThrowIfEnded();
-            byte[] data;
-            if (Buffered < length)
-            {
-                BwaitIndex = BreadIndex + length;
-                Bwait.WaitOne();
-                if (Ended) return null;
-                Bwait.Reset();
-                BwaitIndex = -1;
-            }
-            lock (BreadLock)
-            {
-                data = new byte[length];
-                lock (BwriteLock)
-                {
-                    Bstream.Position = BreadIndex;
-                    Bstream.Read(data, 0, length);
-                    BreadIndex += length;
-                }
-            }
-            Btrim();
-            return data;
-        }
-        protected void Btrim()
-        {
-            ThrowIfEnded();
-            lock (BreadLock)
-            {
-                lock (BwriteLock)
-                {
-                    int buffered = Buffered;
-                    Bstream.Position = BreadIndex;
-                    byte[] remain = new byte[buffered];
-                    Bstream.Read(remain, 0, buffered);
-                    Bstream.Position = 0;
-                    Bstream.Write(remain, 0, buffered);
-                    BreadIndex = 0;
-                    BwriteIndex = buffered;
-                }
-            }
-        }
-
-        virtual public void End()
-        {
-            ThrowIfEnded();
-            lock (BreadLock)
-            {
-                lock (BwriteLock)
-                {
-                    Ended = true;
-                    Bstream.Dispose();
-                    Bblock.Set();
-                    Bwait.Set();
-                    Bblock.Dispose();
-                    Bwait.Dispose();
-                    PipedTo = null;
-                    Paused = false;
-                }
-            }
-        }
-        virtual public void Pause()
-        {
-            ThrowIfEnded();
-            lock (BreadLock)
-            {
-                Paused = true;
-                Bblock.Reset();
-            }
-        }
-        virtual public void Pipe(IWritable to)
-        {
-            lock (BreadLock)
-                lock (BwriteLock)
-                {
-                    ThrowIfEnded();
-                    PipedTo = to;
-                    BtestNewPathing();
-                }
-        }
-        virtual public void Unpipe(IReadable from)
-        {
-            lock (BreadLock) lock (BwriteLock)
-                {
-                    ThrowIfEnded();
-                    if (from.PipedTo == this) from.Unpipe();
-                    else throw new InvalidOperationException("The specified readable is not piped to this writable");
-                }
-        }
-        abstract public byte[] Read();
-        abstract public byte[] Read(int length);
-        virtual public void Resume()
-        {
-            ThrowIfEnded();
-            lock (BreadLock)
-            {
-                Paused = false;
-                Bblock.Set();
-                BtestNewPathing();
-            }
-        }
-        public void Unpipe()
-        {
-            lock (BreadLock)
+            lock (Rlock)
             {
                 ThrowIfEnded();
-                PipedTo = null;
+                Rpause.WaitOne();
+                if (Ended) return null;
+                bool waiting = false;
+                lock (Wlock) if (Buffered == 0) waiting = true;
+                if (waiting)
+                {
+                    Rtarget = 1;
+                    Rwait.WaitOne();
+                    if (Ended) return null;
+                    Rwait.Reset();
+                }
+                ulong length;
+                lock (Wlock) length = Buffered;
+                byte[] dst = new byte[length];
+                Read(dst);
+                return dst;
             }
         }
-
-        abstract public void Write(byte[] data);
-        virtual public void Write(byte[] data, int offset, int count)
+        protected byte[] Bread(ulong length)
         {
-            byte[] sliced = new byte[count];
-            Buffer.BlockCopy(data, offset, sliced, 0, count);
-            Write(sliced);
+            lock (Rlock)
+            {
+                ThrowIfEnded();
+                Rpause.WaitOne();
+                if (Ended) return null;
+                bool waiting = false;
+                lock (Wlock) if (Buffered < length) waiting = true;
+                if (waiting)
+                {
+                    Rtarget = length;
+                    Rwait.WaitOne();
+                    if (Ended) return null;
+                    Rwait.Reset();
+                }
+                byte[] dst = new byte[length];
+                Read(dst);
+                return dst;
+            }
+        }
+        protected ulong Bread(byte[] destination)
+        {
+            lock (Rlock) lock (Wlock)
+                {
+                    ThrowIfEnded();
+                    ulong length = Math.Min(Buffered, (ulong)destination.LongLength);
+                    buffer.Read(destination);
+                    return length;
+                }
+        }
+
+        protected bool Bwrite(byte[] source)
+        {
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                buffer.Write(source);
+                if (Rtarget == null && Rtarget < Buffered) return true;
+                Rwait.Set();
+                return true;
+            }
+        }
+        protected bool Bhandle(byte[] data)
+        {
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                if (data.Length == 0) return false;
+                ulong len = (ulong)data.LongLength;
+                Wwritten += len;
+                bool something = false;
+                if (Rpipe != null)
+                {
+                    if (Rpipe.Ended || !Rpipe.Write(data)) OnFail?.Invoke();
+                    something = true;
+                }
+                if (_dataEvent != null) { _dataEvent?.Invoke(data); something = true; }
+                if (Rtarget != null || !something) Bwrite(data);
+                if (Ended || Buffered == 0) OnDrain?.Invoke();
+                return true;
+            }
+        }
+        protected void BcheckNewPathing()
+        {
+            if (IsPaused) return;
+            if (Buffered == 0) return;
+            Bhandle(Read());
+        }
+
+        protected void FireFail() => OnFail?.Invoke();
+        public abstract bool Write(byte[] source);
+        public abstract bool Write(byte[] source, ulong start, ulong end);
+        public abstract byte[] Read();
+        public abstract byte[] Read(ulong length);
+        public abstract ulong Read(byte[] destination);
+
+        public virtual bool End()
+        {
+            lock (Rlock) lock (Wlock)
+                {
+                    if (Ended) return false;
+                    Ended = true;
+                    Rpause.Set();
+                    Rpause.Dispose();
+                    Rwait.Set();
+                    Rwait.Dispose();
+                    OnEnd?.Invoke();
+                    return true;
+                }
         }
     }
 }

@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Text;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
-namespace CSSockets.Http.Primitives
+namespace CSSockets.Http.Structures
 {
     internal static class StringJoiner
     {
@@ -12,8 +10,7 @@ namespace CSSockets.Http.Primitives
         {
             string s = "";
             foreach (T item in enumerable) s += item.ToString() + delimiter;
-            if (s.Length == 0) return s;
-            return s.Remove(s.Length - delimiter.Length, delimiter.Length);
+            return s.Length == 0 ? s : s.Remove(s.Length - delimiter.Length, delimiter.Length);
         }
     }
     sealed public class SearchToken
@@ -30,15 +27,15 @@ namespace CSSockets.Http.Primitives
     }
     sealed public class SearchTokenList
     {
-        private List<SearchToken> Tokens { get; } = new List<SearchToken>();
+        private readonly List<SearchToken> tokens = new List<SearchToken>();
 
-        public int GetIndexFor(string key) => Tokens.FindIndex((v) => v.Key == key);
-        public SearchToken Get(string key) => Tokens.Find((v) => v.Key == key);
+        public int GetIndexFor(string key) => tokens.FindIndex((v) => v.Key == key);
+        public SearchToken Get(string key) => tokens.Find((v) => v.Key == key);
         public void Set(string key, string value) => this[key] = value;
-        public void Remove(string key) => Tokens.RemoveAt(GetIndexFor(key));
+        public void Remove(string key) => tokens.RemoveAt(GetIndexFor(key));
 
         public IReadOnlyList<SearchToken> Collection
-            => new ReadOnlyCollection<SearchToken>(Tokens);
+            => new ReadOnlyCollection<SearchToken>(tokens);
 
         public static bool TryParse(string s, out SearchTokenList result)
         {
@@ -73,27 +70,20 @@ namespace CSSockets.Http.Primitives
             return result;
         }
 
-        public SearchTokenList() { }
-        public SearchTokenList(string search)
-        {
-            SearchTokenList result = Parse(search);
-            Tokens = result.Tokens;
-        }
-
         public string this[string tokenKey]
         {
             get => Get(tokenKey)?.Value;
             set
             {
                 int index = GetIndexFor(tokenKey);
-                if (index == -1) Tokens.Add(new SearchToken(tokenKey, value));
-                else Tokens[index].Value = value;
+                if (index == -1) tokens.Add(new SearchToken(tokenKey, value));
+                else tokens[index].Value = value;
             }
         }
 
-        public override string ToString() => Tokens.Count == 0 ? "" : "?" + Tokens.Join("&");
+        public override string ToString() => tokens.Count == 0 ? "" : "?" + tokens.Join("&");
     }
-    sealed public class HttpPath
+    sealed public class Path
     {
         private enum TraverseResult : byte
         {
@@ -109,13 +99,13 @@ namespace CSSockets.Http.Primitives
             switch (result)
             {
                 case TraverseResult.AbsolutePathHasRelativeDirs:
-                    throw new ArgumentException("Given absolute path must contains the relative . and .. directories");
+                    throw new ArgumentException("Given absolute path contains the relative . and .. directories");
                 case TraverseResult.NotAbsolutePath:
                     throw new ArgumentException("Given path is not absolute");
                 case TraverseResult.NotRelativePath:
                     throw new ArgumentException("Given path is not relative");
                 case TraverseResult.RelativePathHasInvalidRelativeDirs:
-                    throw new ArgumentException("Given relative path tries to traverse backwards after the first directory name");
+                    throw new ArgumentException("Given relative path tries to traverse backwards after first absolute directory name");
                 case TraverseResult.TraversingBeyondRoot:
                     throw new ArgumentException("Given relative path traverses beyond root");
                 default: break;
@@ -177,25 +167,25 @@ namespace CSSockets.Http.Primitives
         public void Traverse(string path = "/") => CheckTraverseResult(InternalTraverse(path));
         public bool TryTraverse(string path = "/") => InternalTraverse(path) == TraverseResult.Success;
 
-        public bool Contains(HttpPath other)
+        public bool Contains(Path other)
         {
             int checkLen = Math.Min(Location.Count, other.Location.Count);
             for (int i = 0; i < checkLen; i++) if (Location[i] != other.Location[i]) return false;
             return checkLen == Location.Count;
         }
 
-        public HttpPath() => Initialize();
-        public HttpPath(HttpPath other) => Initialize(other.FullPath);
-        public HttpPath(string path) => Initialize(path);
+        public Path() => Initialize();
+        public Path(Path other) => Initialize(other.FullPath);
+        public Path(string path) => Initialize(path);
 
         public override string ToString() => FullPath;
 
-        public static implicit operator HttpPath(string value) => new HttpPath(value);
-        public static implicit operator string(HttpPath value) => value.FullPath;
+        public static implicit operator Path(string value) => new Path(value);
+        public static implicit operator string(Path value) => value.FullPath;
     }
     sealed public class Query
     {
-        public HttpPath Path { get; set; }
+        public Path Path { get; set; }
         public string Hash { get; set; }
         public SearchTokenList Searches { get; set; }
         public string Search
@@ -224,7 +214,7 @@ namespace CSSockets.Http.Primitives
                     return false;
                 temp.Searches = searches;
             }
-            HttpPath tempPath = new HttpPath();
+            Path tempPath = new Path();
             if (!tempPath.TryInitialize(splitForSearch[0]))
                 return false;
             temp.Path = tempPath;
@@ -244,9 +234,9 @@ namespace CSSockets.Http.Primitives
             Hash = hash;
             Search = searchString;
         }
-        public Query(HttpPath path, string hash, SearchTokenList searches)
+        public Query(Path path, string hash, SearchTokenList searches)
         {
-            Path = new HttpPath(path.FullPath);
+            Path = new Path(path.FullPath);
             Hash = hash;
             Searches = searches;
         }

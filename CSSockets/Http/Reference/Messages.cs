@@ -1,48 +1,50 @@
-﻿using CSSockets.Tcp;
+﻿using System;
+using CSSockets.Streams;
 using CSSockets.Http.Base;
-using CSSockets.Http.Primitives;
+using CSSockets.Http.Structures;
 
 namespace CSSockets.Http.Reference
 {
-    public class ClientRequest : IncomingMessage<RequestHead, ResponseHead>
+    public class ClientRequest : Request<RequestHead, ResponseHead>
     {
-        public ClientRequest(Connection<RequestHead, ResponseHead> connection, RequestHead head, bool hasBody) : base(connection, head, hasBody) { }
-
-        // head accesors
-        public Query Query => Head.Query;
+        public ClientRequest(RequestHead head, BodyType bodyType, ServerConnection connection) : base(head, bodyType, connection) { }
         public string Method => Head.Method;
+        public Query Query => Head.Query;
+        public Path Path => Head.Query.Path;
     }
 
-    public class ServerResponse : OutgoingMessage<RequestHead, ResponseHead>
+    public class ServerResponse : Response<RequestHead, ResponseHead>
     {
-        public ServerResponse(Connection<RequestHead, ResponseHead> connection) : base(connection) { }
-
-        // head accesors
-        public ushort StatusCode
+        public ServerResponse(Structures.Version version, ServerConnection connection)
+            : base(version, connection) { }
+        public ushort ResponseCode
         {
-            get => Head.StatusCode;
-            set { ThrowIfHeadSent(); Head.StatusCode = value; }
+            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.StatusCode.Value;
+            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.StatusCode = value; }
         }
-        public string StatusDescription
+        public string ResponseDescription
         {
-            get => Head.StatusDescription;
-            set { ThrowIfHeadSent(); Head.StatusDescription = value; }
-        }
-
-        public void SetHead(ushort statusCode, string statusDescription, params Header[] headers)
-        {
-            ThrowIfHeadSent();
-            Head.StatusCode = statusCode;
-            Head.StatusDescription = statusDescription;
-            foreach (Header h in headers)
-                Head.Headers[h.Name] = h.Value;
+            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.StatusDescription;
+            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.StatusDescription = value; }
         }
 
+        public override bool SendHead()
+        {
+            if (!Connection.SendHead(head)) return false;
+            return IsHeadSent = true;
+        }
+        public override bool End() => base.End() && Connection.FinishResponse();
         public byte[] Upgrade()
         {
-            byte[] trail = Connection.SetUpgrading();
-            End();
-            return trail;
+            if (!base.End() || !Connection.FinishResponse()) return null;
+            if (!Connection.Detach()) return null;
+            byte[] a = Connection.HeadParser.Read();
+            byte[] b = Connection.BodyParser.Excess.Read();
+            byte[] c = new byte[a.LongLength + b.LongLength];
+            PrimitiveBuffer.Copy(a, 0, c, 0, (ulong)a.LongLength);
+            PrimitiveBuffer.Copy(b, (ulong)a.LongLength, c, 0, (ulong)b.LongLength);
+            Connection.Abandon();
+            return c;
         }
     }
 }

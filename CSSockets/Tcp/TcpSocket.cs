@@ -1,302 +1,238 @@
-﻿//#define DEBUG_TCPIO
-
-using System;
+﻿using System;
 using System.Net;
-using System.Net.Sockets;
 using CSSockets.Streams;
+using System.Net.Sockets;
 
 namespace CSSockets.Tcp
 {
-    /// <summary>
-    /// Represents the states a TcpSocket can have.
-    /// </summary>
+    public delegate void TcpSocketErrorHandler(SocketError socketError);
     public enum TcpSocketState : byte
     {
-        Closed = 0,
+        /// <summary>
+        /// No operations are possible and the socket is not doing a connect operation in the background.
+        /// </summary>
+        Dormant = 0,
+        /// <summary>
+        /// No operations are possible while the socket is trying to connect to a remote endpoint.
+        /// </summary>
         Opening = 1,
+        /// <summary>
+        /// All operations are possible and data transferring is guaranteed.
+        /// </summary>
         Open = 2,
-        Closing = 3
+        /// <summary>
+        /// No operations are possible because one of the endpoints has sent a FIN frame.
+        /// </summary>
+        Closing = 3,
+        /// <summary>
+        /// No operations are possible and the socket is disposed.
+        /// </summary>
+        Closed = 4
     }
-    /// <summary>
-    /// TcpSocket data flow handler.
-    /// </summary>
-    public delegate void TcpSocketControlHandler();
-    /// <summary>
-    /// TcpSocket exception handler.
-    /// </summary>
-    /// <param name="exception">The exception thrown.</param>
-    public delegate void TcpExceptionHandler(SocketException exception);
-
-    /// <summary>
-    /// A TCP socket wrapper inheriting the BaseDuplex.
-    /// </summary>
-    sealed public class TcpSocket : BaseDuplex
+    internal enum TcpSocketOp : byte
     {
-        public TcpSocketState State { get; internal set; } = TcpSocketState.Closed;
-        public Socket Base { get; }
-        public IPAddress RemoteAddress { get; private set; }
+        Noop = 0,
+        Open = 1,
+        EndRead = 2,
+        EndWrite = 3,
+        Close = 4,
+        Terminate = 5,
+        Throw = 6
+    }
 
-        internal TcpSocketIOHandler.IOThread IOHandler { get; set; }
+    public sealed class TcpSocket : BaseDuplex
+    {
+        public Socket Base { get; } = null;
+        public IPAddress RemoteAddress { get; private set; } = null;
+        public TcpSocketState State { get; private set; } = TcpSocketState.Dormant;
 
-        public event TcpSocketControlHandler OnOpen;
-        public event TcpExceptionHandler OnError;
-        public event TcpSocketControlHandler OnTimeout;
-        public event TcpSocketControlHandler OnEnd;
-        public event TcpSocketControlHandler OnClose;
+        internal SocketIOHandler.IOThread Handle = null;
+        internal TcpListener Creator = null;
+        internal bool HfiredTimeout = false;
+        internal DateTime HlastActivity;
+        internal bool HqueuedOpen = false;
+        internal bool HqueuedEndW = false;
+        internal bool HqueuedClose = false;
+        internal bool HqueuedTerm = false;
 
-        public bool CanTimeout { get; set; }
-        public TimeSpan TimeoutAfter { get; set; }
-        public DateTime LastActivityTime { get; private set; }
-        private bool CalledTimeout { get; set; } = false;
+        public event TcpSocketErrorHandler OnError;
+        public event ControlHandler OnTimeout;
+        public event ControlHandler OnOpen;
+        public event ControlHandler OnClose;
 
-        internal readonly bool isServer = false;
-        internal bool IsTerminating { get; set; }
-        internal bool IsClosing { get; set; }
-        internal TcpListener Owner { get; }
+        public bool CanTimeout { get; set; } = false;
+        public TimeSpan TimeoutAfter { get; set; } = new TimeSpan();
 
-        public TcpSocket()
-            : this(new Socket(SocketType.Stream, ProtocolType.Tcp)) { isServer = false; }
-        internal TcpSocket(Socket socket, TcpListener owner)
+        public TcpSocket() => Base = new Socket(SocketType.Stream, ProtocolType.Tcp);
+        internal TcpSocket(Socket socket)
         {
-            if (socket.ProtocolType != ProtocolType.Tcp)
-                throw new SocketException((int)SocketError.ProtocolType);
+            if (socket.SocketType != SocketType.Stream)
+                throw new ArgumentException("Provided socket is not using TCP");
             Base = socket;
-            Owner = owner;
-            isServer = true;
-            if (socket.Connected) BeginOps();
-        }
-        public TcpSocket(Socket socket) : this(socket, null) { }
-
-        private void UpdateRemoteAddress()
-        {
-            if (State == TcpSocketState.Open && !Ended)
-            {
-                if (Base.RemoteEndPoint is IPEndPoint)
-                {
-#if DEBUG_TCPIO
-                    Console.WriteLine("UpdateRemoteAddress: remote address is IP (is server: {0})", isServer);
-#endif
-                    RemoteAddress = (Base.RemoteEndPoint as IPEndPoint).Address;
-                    if (RemoteAddress.IsIPv4MappedToIPv6) RemoteAddress = RemoteAddress.MapToIPv4();
-                }
-                else if (Base.RemoteEndPoint is DnsEndPoint)
-                {
-#if DEBUG_TCPIO
-                    Console.WriteLine("UpdateRemoteAddress: remote address is hostname (is server: {0})", isServer);
-#endif
-                    IPAddress[] addresses = Dns.GetHostAddresses((Base.RemoteEndPoint as DnsEndPoint).Host);
-#if DEBUG_TCPIO
-                    Console.WriteLine("UpdateRemoteAddress: hostname resolved; got address: {0} (is server: {1})", addresses.Length > 0, isServer);
-#endif
-                    if (addresses.Length == 0) RemoteAddress = null;
-                    else RemoteAddress = addresses[0];
-                }
-            }
-            else RemoteAddress = null;
         }
 
-        private void OnConnect(IAsyncResult ar)
+        private void OnConnectEnd(IAsyncResult ar)
         {
-#if DEBUG_TCPIO
-            Console.WriteLine("OnConnect: closed: {0}", State == TcpSocketState.Closed);
-#endif
-            if (State == TcpSocketState.Closed)
-            {
-                Base.Dispose();
-                return;
-            }
             try { Base.EndConnect(ar); }
-            catch (SocketException ex)
-            {
-#if DEBUG_TCPIO
-                Console.WriteLine("OnConnect: unsuccessful; {0}", ex.Message);
-#endif
-                Control(ex, false, false, false, false);
-            }
-#if DEBUG_TCPIO
-            Console.WriteLine("OnConnect: successful");
-#endif
-            BeginOps();
+            catch (SocketException ex) { Control(TcpSocketOp.Throw, ex.SocketErrorCode); return; }
+            LinkToIOHandler();
         }
-
-        private void BeginOps()
+        internal void LinkToIOHandler()
         {
-            State = TcpSocketState.Open;
-            UpdateRemoteAddress();
-            LastActivityTime = DateTime.UtcNow;
-#if DEBUG_TCPIO
-            Console.WriteLine("FireOpen: enqueue at TcpSocketIOHandler (is server: {0})", isServer);
-#endif
-            TcpSocketIOHandler.Enqueue(this);
-        }
-        internal void FireOpen()
-        {
-#if DEBUG_TCPIO
-            Console.WriteLine("FireOpen: fire open (is server: {0})", isServer);
-#endif
-            if (Owner == null) OnOpen?.Invoke();
-            else Owner.FireConnection(this);
-        }
-
-        internal bool Control(SocketException ex, bool silent, bool terminate, bool r, bool w)
-        {
-            if (ex != null || terminate)
-            {
-#if DEBUG_TCPIO
-                Console.WriteLine("Control: terminate (has exception: {0}, silent: {1}, is server: {2})", ex != null, silent, isServer);
-#endif
-                // terminate & terminate w/ exception
-                State = TcpSocketState.Closed;
-                if (!silent) Base.Dispose();
-                if (!ReadableEnded) Readable.End();
-                if (!WritableEnded) Writable.End();
-                if (ex != null) OnError?.Invoke(ex);
-                OnClose?.Invoke();
-                return true;
-            }
-            else if (r && w)
-            {
-#if DEBUG_TCPIO
-                Console.WriteLine("Control: graceful close (is server: {0})", isServer);
-#endif
-                // graceful close
-                State = TcpSocketState.Closed;
-                Base.Close();
-                if (!ReadableEnded) Readable.End();
-                if (!WritableEnded) Writable.End();
-                OnClose?.Invoke();
-                return true;
-            }
-            else if (r)
-            {
-#if DEBUG_TCPIO
-                Console.WriteLine("Control: end readable (is server: {0})", isServer);
-#endif
-                // end readable
-                State = TcpSocketState.Closing;
-                Readable.End();
-                if (WritableEnded || OnEnd == null)
-                {
-#if DEBUG_TCPIO
-                    Console.WriteLine("Control: OnEnd == null; progress to close (is server: {0})", isServer);
-#endif
-                    Control(null, false, false, true, true);
-                    return true;
-                }
-                else if (OnEnd != null)
-                {
-#if DEBUG_TCPIO
-                    Console.WriteLine("Control: OnEnd != null (is server: {0})", isServer);
-#endif
-                    OnEnd?.Invoke();
-                    return false;
-                }
-            }
-            else if (w)
-            {
-                // end writable
-#if DEBUG_TCPIO
-                Console.WriteLine("Control: end writable (is server: {0})", isServer);
-#endif
-                State = TcpSocketState.Closing;
-                try { Base.Shutdown(SocketShutdown.Send); }
-                catch (SocketException ex2) { return Control(ex2, true, false, false, false); }
-                Writable.End();
-                if (ReadableEnded)
-                {
-#if DEBUG_TCPIO
-                    Console.WriteLine("Control: progress to close (is server: {0})", isServer);
-#endif
-                    return Control(null, false, false, true, true);
-                }
-                return false;
-            }
-            throw new InvalidOperationException("Cannot do anything");
+            Handle = SocketIOHandler.GetBest();
+            Handle.Open(this);
         }
         internal bool FireTimeout()
         {
-            if (OnTimeout != null)
+            if (HfiredTimeout) return false;
+            HfiredTimeout = true;
+            if (OnTimeout != null) { OnTimeout?.Invoke(); return false; }
+            return true;
+        }
+        internal void UpdateRemoteAddress(EndPoint endPoint)
+        {
+            if (endPoint is IPEndPoint) RemoteAddress = (endPoint as IPEndPoint).Address;
+            else try
+                {
+                    IPHostEntry resolved = Dns.GetHostEntry((endPoint as DnsEndPoint).Host);
+                    if (resolved.AddressList.Length > 0) RemoteAddress = resolved.AddressList[0];
+                }
+                catch (SocketException) { }
+            if (RemoteAddress.IsIPv4MappedToIPv6)
+                RemoteAddress = RemoteAddress.MapToIPv4();
+        }
+        internal bool Control(TcpSocketOp op, SocketError error = SocketError.Success)
+        {
+            HlastActivity = DateTime.UtcNow;
+            switch (op)
             {
-                if (CalledTimeout) return false;
-                OnTimeout?.Invoke();
-            }
-            else IOHandler.EnqueueTerminate(this);
-            return false;
-        }
-
-        public override byte[] Read() => Readable.Read();
-        public override byte[] Read(int length) => Readable.Read(length);
-        public override void Write(byte[] data) => Writable.Write(data);
-
-        internal byte[] ReadOutgoing()
-        {
-            LastActivityTime = DateTime.UtcNow;
-            CalledTimeout = false;
-            return Writable.Read(Math.Min(65536, Writable.Buffered));
-        }
-        internal void WriteIncoming(byte[] data)
-        {
-            LastActivityTime = DateTime.UtcNow;
-            CalledTimeout = false;
-            Readable.Write(data);
-        }
-
-        public void Terminate()
-        {
-            switch (State)
-            {
-                case TcpSocketState.Closed:
-                    throw new InvalidOperationException("This socket is closed");
-                case TcpSocketState.Opening:
-#if DEBUG_TCPIO
-                    Console.WriteLine("Control: terminate on opening state (is server: {0})", isServer);
-#endif
+                case TcpSocketOp.Throw:
+                    if (State != TcpSocketState.Closed) Base.Dispose();
                     State = TcpSocketState.Closed;
-                    break;
-                case TcpSocketState.Open:
-                case TcpSocketState.Closing:
-#if DEBUG_TCPIO
-                    Console.WriteLine("Terminate: enqueue terminate (is server: {0})", isServer);
-#endif
-                    IOHandler.EnqueueTerminate(this);
-                    break;
-            }
-        }
-        public override void End()
-        {
-            switch (State)
-            {
-                case TcpSocketState.Closed:
-                    throw new InvalidOperationException("This socket is closed");
-                case TcpSocketState.Opening:
-                case TcpSocketState.Open:
-#if DEBUG_TCPIO
-                    Console.WriteLine("End: enqueue close on open state (is server: {0})", isServer);
-#endif
-                    IOHandler.EnqueueClose(this);
-                    break;
-                case TcpSocketState.Closing:
-                    if (WritableEnded) throw new InvalidOperationException("This socket is closing; to forcibly close the connection call Terminate() instead");
-#if DEBUG_TCPIO
-                    Console.WriteLine("End: enqueue close on closing state (is server: {0})", isServer);
-#endif
-                    IOHandler.EnqueueClose(this);
-                    break;
+                    if (!ReadableEnded) EndReadable();
+                    if (!WritableEnded) EndWritable();
+                    OnError?.Invoke(error);
+                    OnClose?.Invoke();
+                    return true;
+                case TcpSocketOp.Terminate:
+                    Base.Dispose();
+                    State = TcpSocketState.Closed;
+                    if (!ReadableEnded) EndReadable();
+                    if (!WritableEnded) EndWritable();
+                    OnClose?.Invoke();
+                    return true;
+                case TcpSocketOp.Close:
+                    Base.Close();
+                    State = TcpSocketState.Closed;
+                    if (!ReadableEnded) EndReadable();
+                    if (!WritableEnded) EndWritable();
+                    OnClose?.Invoke();
+                    return true;
+                case TcpSocketOp.EndWrite:
+                    State = TcpSocketState.Closing;
+                    Base.Shutdown(SocketShutdown.Send);
+                    EndWritable();
+                    if (ReadableEnded) return Control(TcpSocketOp.Close);
+                    return false;
+                case TcpSocketOp.EndRead:
+                    State = TcpSocketState.Closing;
+                    Base.Shutdown(SocketShutdown.Receive);
+                    EndReadable();
+                    if (WritableEnded) return Control(TcpSocketOp.Close);
+                    if (EndHasListeners) FireEnd();
+                    else return Control(TcpSocketOp.EndWrite);
+                    return false;
+                case TcpSocketOp.Open:
+                    State = TcpSocketState.Open;
+                    UpdateRemoteAddress(Base.RemoteEndPoint);
+                    if (Creator == null) OnOpen?.Invoke();
+                    else Creator.FireConnection(this);
+                    return false;
+                default: return false;
             }
         }
 
-        public void Connect(EndPoint endPoint)
+        public void CheckRead()
         {
-            if (State != TcpSocketState.Closed)
-                throw new InvalidOperationException("The socket state is not Closed thus a Connect operation is invalid.");
-            State = TcpSocketState.Opening;
-            try
+            if (State == TcpSocketState.Open || (State == TcpSocketState.Closing && !ReadableEnded)) return;
+            throw new SocketException((int)SocketError.NotConnected);
+        }
+        public bool CheckWrite() => State == TcpSocketState.Open;
+        public override byte[] Read()
+        {
+            CheckRead();
+            return Readable.Read();
+        }
+        public override byte[] Read(ulong length)
+        {
+            CheckRead();
+            return Readable.Read(length);
+        }
+        public override ulong Read(byte[] destination)
+        {
+            CheckRead();
+            return Readable.Read(destination);
+        }
+        public override bool Write(byte[] source) => CheckWrite() && Writable.Write(source);
+        public override bool Write(byte[] source, ulong start, ulong end) => CheckWrite() && Writable.Write(source, start, end);
+
+        public bool Connect(EndPoint endPoint)
+        {
+            if (State != TcpSocketState.Dormant) return false;
+            try { Base.BeginConnect(endPoint, OnConnectEnd, null); }
+            catch (SocketException ex) { Control(TcpSocketOp.Throw, ex.SocketErrorCode); return false; }
+            return true;
+        }
+
+        internal bool WriteReadable(byte[] source)
+        {
+            HlastActivity = DateTime.UtcNow;
+            return Readable.Write(source);
+        }
+        internal byte[] ReadWritable()
+        {
+            HlastActivity = DateTime.UtcNow;
+            return Writable.Read(Math.Min(Writable.Buffered, 65536));
+        }
+
+        protected override bool EndReadable()
+        {
+            lock (EndLock) return Readable.End();
+        }
+        protected override bool EndWritable()
+        {
+            lock (EndLock) return Writable.End();
+        }
+        public override bool End()
+        {
+            lock (EndLock)
             {
-                Base.BeginConnect(endPoint, OnConnect, null);
+                switch (State)
+                {
+                    case TcpSocketState.Dormant:
+                        Base.Dispose();
+                        State = TcpSocketState.Closed;
+                        return true;
+                    case TcpSocketState.Open:
+                        return Handle.EndWrite(this);
+                    case TcpSocketState.Closing:
+                        return Handle.Close(this);
+                    default: return false;
+                }
             }
-            catch (SocketException ex)
+        }
+        public bool Terminate()
+        {
+            lock (EndLock)
             {
-                Control(ex, false, false, false, false);
+                switch (State)
+                {
+                    case TcpSocketState.Opening:
+                    case TcpSocketState.Open:
+                    case TcpSocketState.Closing:
+                        return Handle.Terminate(this);
+                    default: return false;
+                }
             }
         }
     }

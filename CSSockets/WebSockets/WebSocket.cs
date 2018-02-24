@@ -20,10 +20,10 @@ namespace CSSockets.WebSockets
         }
         public RequestHead RequestHead { get; }
         public IPAddress RemoteAddress => Base.RemoteAddress;
-        public bool Paused => Readable.Paused;
-        public bool Corked => Writable.Paused;
-        public int IncomingBuffered => Readable.Buffered;
-        public int OutgoingBuffered => Writable.Buffered;
+        public bool IsPaused => Base.IsPaused;
+        public bool IsCorked => Base.IsCorked;
+        public ulong BufferedReadable => Base.BufferedReadable;
+        public ulong BufferedWritable => Base.BufferedReadable;
 
         public event BinaryMessageHandler OnBinary;
         public event StringMessageHandler OnString;
@@ -35,8 +35,6 @@ namespace CSSockets.WebSockets
         protected object OpsLock { get; } = new object();
         protected FrameParser FrameParser { get; } = new FrameParser();
         protected FrameMerger FrameMerger { get; } = new FrameMerger();
-        protected RawUnifiedDuplex Readable { get; } = new RawUnifiedDuplex();
-        protected RawUnifiedDuplex Writable { get; } = new RawUnifiedDuplex();
 
         protected WebSocket(TcpSocket socket, RequestHead head)
         {
@@ -47,13 +45,7 @@ namespace CSSockets.WebSockets
             FrameParser.OnOutput += OnIncomingFrame;
             FrameMerger.OnOutput += OnIncomingMessage;
         }
-        internal void WriteTrail(byte[] trail)
-        {
-            FrameParser.Write(trail);
-            Base.Pipe(Readable);
-            Readable.Pipe(FrameParser);
-            Writable.Pipe(Base);
-        }
+        internal void WriteTrail(byte[] trail) => FrameParser.Write(trail);
 
         abstract protected bool IsValidFrame(Frame frame);
 
@@ -101,10 +93,10 @@ namespace CSSockets.WebSockets
             }
         }
 
-        virtual public void Cork() => Writable.Pause();
-        virtual public void Uncork() => Writable.Resume();
-        virtual public void Pause() => Readable.Pause();
-        virtual public void Resume() => Readable.Resume();
+        virtual public bool Cork() => Base.Pause();
+        virtual public bool Uncork() => Base.Resume();
+        virtual public bool Pause() => Base.Pause();
+        virtual public bool Resume() => Base.Resume();
 
         private void FireClose(ushort code, string reason) => OnClose?.Invoke(code, reason);
         private void OnSurpriseEnd() => FireClose(0, null);
@@ -112,8 +104,6 @@ namespace CSSockets.WebSockets
         {
             FrameParser.End();
             FrameMerger.End();
-            Readable.End();
-            Writable.End();
         }
         protected void InitiateClose(ushort code, string reason)
         {
@@ -133,7 +123,7 @@ namespace CSSockets.WebSockets
         {
             ThrowIfNotOpen();
             if (IsClosing) return;
-            frame.Serialize(Writable);
+            frame.Serialize(Base);
         }
         abstract public void Send(byte[] data);
         abstract public void Send(string data);

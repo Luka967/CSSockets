@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Threading;
-using CSSockets.Streams;
 using System.Collections.Generic;
 
-namespace CSSockets.Base
+namespace CSSockets.WebSockets
 {
-    public class Queue<T> : IEndable
+    internal class Queue<T>
     {
         private List<T> List { get; }
         private object GetterLock { get; }
-        private EventWaitHandle GetterBlock { get; }
+        private AutoResetEvent GetterBlock { get; }
         public int Count => List.Count;
         public bool IsEmpty => List.Count == 0;
         public bool Ended { get; private set; }
@@ -19,7 +18,7 @@ namespace CSSockets.Base
         {
             List = new List<T>();
             GetterLock = new object();
-            GetterBlock = new EventWaitHandle(false, EventResetMode.ManualReset);
+            GetterBlock = new AutoResetEvent(false);
         }
         public Queue(IEnumerable<T> starting) : this() => List.AddRange(starting);
 

@@ -1,111 +1,137 @@
 ﻿using System;
 using CSSockets.Tcp;
 using CSSockets.Http.Base;
-using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Reference
 {
-    sealed public class ServerConnection : Connection<RequestHead, ResponseHead>
+    public delegate void ClientRequestHandler(ClientRequest request, ServerResponse response);
+    public sealed class ServerConnection : Connection<RequestHead, ResponseHead>
     {
-        public ServerConnection(TcpSocket socket, HttpMessageHandler<RequestHead, ResponseHead> handler) :
-            base(socket, new RequestHeadParser(), new ResponseHeadSerializer(), handler)
-        { }
+        static int id = 0;
+        int mid = ++id;
+        int reqc = 0;
+        public ServerConnection(TcpSocket socket, ClientRequestHandler handler) : base(socket)
+            => Handler = handler;
 
-        protected override void ProcessorThread()
+        public (ClientRequest req, ServerResponse res)? CurrentMessage { get; private set; } = null;
+        public ClientRequestHandler Handler { get; set; }
+        internal bool upgrading = false;
+        private bool hasReqHead = false;
+        private bool hasResHead = false;
+        private bool hasReqBody = false;
+        private bool hasResBody = false;
+
+        protected override bool Initialize()
         {
-            try
-            {
-                while (!Terminating)
-                {
-                    // HeadParser excess -> HeadParser
-                    if (HeadParser.Buffered > 0)
-                        HeadParser.Write(HeadParser.Read());
-                    if (HeadParser.QueuedCount == 0)
-                    {
-                        // BodyParser excess -> HeadParser
-                        if (BodyParser.OutgoingBuffered > 0)
-                            HeadParser.Write(BodyParser.ReadExcess());
-                    }
-                    if (HeadParser.QueuedCount == 0)
-                    {
-                        // upcoming data -> HeadParser
-                        Base.Resume();
-                        Base.Pipe(HeadParser);
-                    }
-                    RequestHead head = HeadParser.Next();
-                    if (head == null) break; // disconnecting
+            HeadParser = new RequestHeadParser();
+            HeadSerializer = new ResponseHeadSerializer();
+            BodyParser = new BodyParser();
+            BodySerializer = new BodySerializer();
+            HeadParser.OnFail += _terminate;
+            BodyParser.OnFail += _terminate;
+            WaitHead();
+            return true;
+        }
 
-                    // repipe
-                    if (!BodyParser.TrySetFor(head)) { Terminate(); break; } // badly set body encoding
-                    if (BodyParser.TransferEncoding != TransferEncoding.None)
-                    {
-                        // body exists
-                        bool bodyFinished = false;
-                        ControlHandler d = () => { Base.Pause(); bodyFinished = true; };
-                        BodyParser.OnEnd += d;
-                        // HeadParser excess -> BodyParser
-                        BodyParser.Write(HeadParser.Read());
-                        if (!bodyFinished)
-                            // upcoming data -> BodyParser
-                            Base.Pipe(BodyParser);
-                    }
-                    else Base.Pause(); // no body
-                    HeadSerializer.Pipe(Base);
-                    BodySerializer.Pipe(Base);
+        private void _terminate() => Terminate();
+        private void WaitHead()
+        {
+            reqc++;
+            hasReqHead = hasResHead = hasReqBody = hasResBody = false;
+            HeadParser.OnOutput += OnReqHead;
+            HeadParser.Pipe(BodyParser);
+            HeadParser.Unpipe();
+            BodyParser.Excess.Pipe(HeadParser);
+            BodyParser.Excess.Unpipe();
+            Base.Pipe(HeadParser);
+        }
+        private void OnReqHead(RequestHead head)
+        {
+            if (hasReqHead) return;
+            hasReqHead = true;
+            Base.Unpipe();
+            HeadParser.OnOutput -= OnReqHead;
 
-                    // create request
-                    ClientRequest req = new ClientRequest(this, head, BodyParser.ContentLength == -1 || BodyParser.ContentLength > 0);
-                    ServerResponse res = new ServerResponse(this);
-                    CurrentMessage = (req, res);
-                    // pipe body buffers
-                    BodyParser.Pipe(req.BodyBuffer);
-                    res.BodyBuffer.Pipe(BodySerializer);
-                    req.OnEnd += Terminate;
+            BodyType? bodyType = BodyType.TryDetectFor(head, true);
+            if (bodyType == null) { Terminate(); return; }
+            if (!BodyParser.TrySetFor(bodyType.Value)) { Terminate(); return; }
 
-                    if (OnMessage == null) throw new InvalidOperationException("OnMessage is null");
-                    OnMessage?.Invoke(req, res);
-                    if (req.Cancelled) break; // terminated
-                    if (!res.Ended) res.EndWait.WaitOne(); // wait for end
+            ClientRequest req = new ClientRequest(head, bodyType.Value, this);
+            ServerResponse res = new ServerResponse(head.Version, this);
+            CurrentMessage = (req, res);
 
-                    // end body buffers
-                    if (!req.Ended) req.BodyBuffer.End();
-                    if (!res.Ended) res.BodyBuffer.End();
+            BodyParser.OnFinish += OnReqBodyFinish;
+            BodyParser.Pipe(req.buffer);
+            HeadParser.Pipe(BodyParser);
+            HeadParser.Unpipe();
+            if (!hasReqBody) Base.Pipe(BodyParser);
 
-                    // finish body
-                    BodySerializer.Finish();
+            HeadSerializer.Pipe(Base);
+            Handler(req, res);
+        }
+        private void OnReqBodyFinish()
+        {
+            if (!hasReqHead) return;
+            hasReqBody = true;
+            BodyParser.OnFinish -= OnReqBodyFinish;
+            BodyParser.Unpipe();
+        }
+        public override bool SendHead(ResponseHead head)
+        {
+            if (!hasReqHead) return false;
+            BodyType? bodyType = BodyType.TryDetectFor(head, true);
+            if (bodyType == null) return !Terminate();
+            if (!BodySerializer.TrySetFor(bodyType.Value)) return !Terminate();
+            hasResHead = true;
 
-                    // unpipe serializers
-                    HeadSerializer.Unpipe();
-                    BodySerializer.Unpipe();
+            HeadSerializer.Write(head);
+            HeadSerializer.Unpipe();
 
-                    // message processed
-                    CurrentMessage = (null, null);
+            BodySerializer.OnFinish += finishResponse;
 
-                    // if no body length is set, disconnect
-                    if (BodySerializer.TransferEncoding == TransferEncoding.Raw)
-                    {
-                        End();
-                        Base.End();
-                        return;
-                    }
-                    // check for disconnection
-                    else if (head.Headers["Connection"] == "close")
-                    {
-                        End();
-                        Base.End();
-                        return;
-                    }
-                    // check if upgrading
-                    else if (Upgrading)
-                    {
-                        End();
-                        Base.Resume();
-                        return;
-                    }
-                }
-            }
-            catch (ObjectDisposedException) { /* socket got disposed */ }
-            lock (DisposeLock) if (!Ended) End();
+            BodySerializer.Pipe(Base);
+            CurrentMessage.Value.res.buffer.Pipe(BodySerializer);
+            return true;
+        }
+        private void finishResponse() => FinishResponse(false);
+        public override bool FinishResponse() => FinishResponse(true);
+        private bool FinishResponse(bool finishBody)
+        {
+            if (!hasReqHead || !hasResHead) return false;
+            OnReqBodyFinish();
+            hasResBody = true;
+
+            BodySerializer.Unpipe();
+            BodySerializer.OnFinish -= finishResponse;
+
+            CurrentMessage.Value.req.buffer.End();
+            CurrentMessage.Value.res.buffer.End();
+            WaitHead();
+            return true;
+        }
+
+        public override bool Detach()
+        {
+            HeadParser.OnFail -= _terminate;
+            BodyParser.OnFail -= _terminate;
+            if (!hasReqHead) HeadParser.OnOutput -= OnReqHead;
+            if (hasReqHead && !hasReqBody) BodyParser.OnFinish -= OnReqBodyFinish;
+            if (hasResHead && !hasResBody) BodySerializer.OnFinish -= finishResponse;
+            HeadParser.Unpipe();
+            HeadSerializer.Unpipe();
+            BodyParser.Unpipe();
+            BodySerializer.Unpipe();
+            return true;
+        }
+        public override bool Abandon()
+        {
+            Detach();
+            Base.Unpipe();
+            HeadParser.End();
+            HeadSerializer.End();
+            BodyParser.End();
+            BodySerializer.End();
+            return true;
         }
     }
 }

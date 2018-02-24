@@ -1,198 +1,219 @@
 ﻿namespace CSSockets.Streams
 {
     /// <summary>
-    /// An alternative for IDisposable, with a boolean indicator.
+    /// Represents a delegate for methods that get called when a major event happens in a stream.
+    /// </summary>
+    public delegate void ControlHandler();
+    /// <summary>
+    /// Represents a delegate for methods that handle incoming data immediately upon arrival.
+    /// </summary>
+    /// <param name="data">The incoming data.</param>
+    public delegate void DataHandler(byte[] data);
+
+    /// <summary>
+    /// Represents an object that can be disposed.
     /// </summary>
     public interface IEndable
     {
         /// <summary>
-        /// Determines if this object has been disposed.
+        /// Fired after the object fully disposes.
+        /// </summary>
+        event ControlHandler OnEnd;
+        /// <summary>
+        /// Determines whether the object has been disposed or not.
         /// </summary>
         bool Ended { get; }
         /// <summary>
-        /// Releases the unmanaged memory this object controls.
+        /// Tries to dispose of the object.
         /// </summary>
-        void End();
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool End();
     }
-
     /// <summary>
-    /// Binary data handler.
+    /// Represents an object that has another layer of disposal.
     /// </summary>
-    /// <param name="data">The data.</param>
-    public delegate void DataHandler(byte[] data);
-
+    public interface IFinishable
+    {
+        /// <summary>
+        /// Determines whether the object has done the first dispose or not.
+        /// </summary>
+        bool Finished { get; }
+        /// <summary>
+        /// Tries to dispose of the object.
+        /// </summary>
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Finish();
+    }
     /// <summary>
-    /// Represents a stream whose incoming data flow can be paused.
+    /// Represents a buffered stream that will fire an event when no outgoing data is buffered.
+    /// </summary>
+    public interface IDrainable
+    {
+        /// <summary>
+        /// Fired when no outgoing data is buffered.
+        /// </summary>
+        event ControlHandler OnDrain;
+    }
+    /// <summary>
+    /// Represents a buffered stream that can be paused.
     /// </summary>
     public interface IPausable
     {
         /// <summary>
-        /// Specifies stream's pause state.
+        /// Determines whether the stream will block the calling thread if it calls a blocking read.
         /// </summary>
-        bool Paused { get; }
+        bool IsPaused { get; }
         /// <summary>
-        /// Force the stream to buffer new incoming data.
+        /// Tries to pause the stream.
         /// </summary>
-        void Pause();
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Pause();
         /// <summary>
-        /// Release buffered data and don't buffer new data.
+        /// Tries to resume / unpause the stream.
         /// </summary>
-        void Resume();
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Resume();
     }
-
     /// <summary>
-    /// Represents a stream whose outgoing data flow can be paused.
+    /// Represents a buffered stream that can be corked.
     /// </summary>
     public interface ICorkable
     {
         /// <summary>
-        /// Specifies stream's cork state.
+        /// Determines whether the stream will block the calling thread if it calls a blocking write.
         /// </summary>
-        bool Corked { get; }
+        bool IsCorked { get; }
         /// <summary>
-        /// Force the stream to buffer new outgoing data.
+        /// Tries to cork the stream.
         /// </summary>
-        void Cork();
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Cork();
         /// <summary>
-        /// Release buffered data and don't buffer new data.
+        /// Tries to uncork the stream.
         /// </summary>
-        void Uncork();
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Uncork();
     }
-
     /// <summary>
-    /// Represents a node.js-like blocking readable stream.
+    /// Represents a readable stream that can automatically forward its incoming data to another writable stream.
     /// </summary>
-    public interface IReadable : IEndable
+    public interface IPiping
     {
         /// <summary>
-        /// Specifies the IWritable the stream will automatically write data to.
+        /// Determines the writable stream the readable is piped to.
         /// </summary>
         IWritable PipedTo { get; }
-
         /// <summary>
-        /// Incoming data handler.
+        /// Tries to set the writable stream it's forwarding data to.
         /// </summary>
-        event DataHandler OnData;
-
+        /// <param name="to">The writable stream.</param>
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Pipe(IWritable to);
         /// <summary>
-        /// Automatically write new incoming data to this IWritable stream.
+        /// Tries to unset the writable stream it's forwarding data to.
         /// </summary>
-        /// <param name="to">The stream to write to.</param>
-        void Pipe(IWritable to);
-        /// <summary>
-        /// Stop writing data to the before specified IWritable stream.
-        /// </summary>
-        void Unpipe();
-
-        /// <summary>
-        /// Reads an arbritrary amount of data, usually the first available.
-        /// </summary>
-        /// <returns>The binary data.</returns>
-        byte[] Read();
-        /// <summary>
-        /// Reads data with a specified size. Blocks the thread until exactly <paramref name="length"/> data has been read.
-        /// </summary>
-        /// <param name="length">The length of the data to read.</param>
-        /// <returns>The data.</returns>
-        byte[] Read(int length);
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Unpipe();
     }
-
     /// <summary>
-    /// Represents a node.js-like blocking writable stream.
+    /// Represents a writable stream that can cancel out the data forwarding to itself coming from a readable.
     /// </summary>
-    public interface IWritable : IEndable
+    public interface IPipable
     {
         /// <summary>
-        /// Stop the IReadable from writing data to this IWritable stream.
+        /// Tries to unpipe itself from the readable stream.
         /// </summary>
-        void Unpipe(IReadable from);
-
-        /// <summary>
-        /// Write data to the stream.
-        /// </summary>
-        /// <param name="data">The data to write.</param>
-        void Write(byte[] data);
-        /// <summary>
-        /// Write part of a byte array to the stream.
-        /// </summary>
-        /// <param name="data">The data to write.</param>
-        /// <param name="offset">The index to start copying data from.</param>
-        /// <param name="length">The amount of bytes to copy.</param>
-        void Write(byte[] data, int offset, int length);
+        /// <param name="from">The readable stream.</param>
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Unpipe(IReadable from);
     }
 
     /// <summary>
-    /// Represents an IReadable which has an underlying buffer.
+    /// Represents a readable stream.
+    /// </summary>
+    public interface IReadable : IEndable, IPiping
+    {
+        /// <summary>
+        /// The amount of octets that have been read.
+        /// </summary>
+        ulong ReadCount { get; }
+        /// <summary>
+        /// Fired when data arrives.
+        /// </summary>
+        event DataHandler OnData;
+        /// <summary>
+        /// Fired when forwarding data fails.
+        /// </summary>
+        event ControlHandler OnFail;
+        /// <summary>
+        /// Performs a blocking read returning everything buffered.
+        /// </summary>
+        /// <returns>The data that was buffered.</returns>
+        byte[] Read();
+        /// <summary>
+        /// Performs a blocking read returning set size data.
+        /// </summary>
+        /// <param name="length">The length of the data.</param>
+        /// <returns>The data.</returns>
+        byte[] Read(ulong length);
+        /// <summary>
+        /// Performs a non-blocking read returning set size data.
+        /// </summary>
+        /// <param name="destination">The data buffer to write to.</param>
+        /// <returns>The amount of read octets.</returns>
+        ulong Read(byte[] destination);
+    }
+    /// <summary>
+    /// Represents a writable stream.
+    /// </summary>
+    public interface IWritable : IEndable, IPipable
+    {
+        /// <summary>
+        /// The amount of octets that have been written.
+        /// </summary>
+        ulong WriteCount { get; }
+        /// <summary>
+        /// Performs a blocking write with a specified data buffer.
+        /// </summary>
+        /// <param name="source">The data buffer to copy from.</param>
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Write(byte[] source);
+        /// <summary>
+        /// Performs a blocking write with a specified part of a data buffer.
+        /// </summary>
+        /// <param name="source">The data buffer to copy from.</param>
+        /// <param name="start">The index to start copying from.</param>
+        /// <param name="end">The index to stop copying from.</param>
+        /// <returns>A boolean indicating if the operation was successful.</returns>
+        bool Write(byte[] source, ulong start, ulong end);
+    }
+    /// <summary>
+    /// Represents a double-decker on which both read and write operations are possible.
+    /// </summary>
+    public interface IDuplex : IReadable, IWritable { }
+
+    /// <summary>
+    /// Represents a readable stream that buffers data before processing it further.
     /// </summary>
     public interface IBufferedReadable : IReadable, IPausable
     {
         /// <summary>
-        /// Read bytes counter.
+        /// The amount of octets that will immediately be read.
         /// </summary>
-        long ReadBytes { get; }
-        /// <summary>
-        /// Returns the size of buffered incoming data.
-        /// </summary>
-        int IncomingBuffered { get; }
+        ulong BufferedReadable { get; }
     }
-
     /// <summary>
-    /// Represents an IWritable which has an underlying buffer.
+    /// Represents a writable stream that buffers data before processing it further.
     /// </summary>
-    public interface IBufferedWritable : IWritable, ICorkable
+    public interface IBufferedWritable : IWritable, IDrainable, ICorkable
     {
         /// <summary>
-        /// Written bytes counter.
+        /// The amount of octets that will immediately be written.
         /// </summary>
-        long WrittenBytes { get; }
-        /// <summary>
-        /// Returns the size of buffered outgoing data.
-        /// </summary>
-        int OutgoingBuffered { get; }
+        ulong BufferedWritable { get; }
     }
-
     /// <summary>
-    /// Represents a blocking duplex stream that queues incoming and outgoing data in one buffer.
+    /// Represents a duplex stream that buffers data before processing it further.
     /// </summary>
-    public interface IUnifiedDuplex : IReadable, IWritable, IPausable
-    {
-        /// <summary>
-        /// Written bytes counter.
-        /// </summary>
-        long ProcessedBytes { get; }
-        /// <summary>
-        /// Returns the size of buffered incoming data.
-        /// </summary>
-        int Buffered { get; }
-    }
-
-    /// <summary>
-    /// Represents a blocking duplex stream.
-    /// </summary>
-    public interface IDuplex : IReadable, IWritable
-    {
-        /// <summary>
-        /// Determines if the readable part of this duplex has ended.
-        /// </summary>
-        bool ReadableEnded { get; }
-        /// <summary>
-        /// Determines if the writable part of this duplex has ended.
-        /// </summary>
-        bool WritableEnded { get; }
-    }
-
-    /// <summary>
-    /// Represents a node.js-like blocking duplex stream that distinctly buffers incoming and outgoing data.
-    /// </summary>
-    public interface IBufferedDuplex : IBufferedReadable, IBufferedWritable
-    {
-        /// <summary>
-        /// Determines if the readable part of this duplex has ended.
-        /// </summary>
-        bool ReadableEnded { get; }
-        /// <summary>
-        /// Determines if the writable part of this duplex has ended.
-        /// </summary>
-        bool WritableEnded { get; }
-    }
+    public interface IBufferedDuplex : IBufferedReadable, IBufferedWritable { }
 }

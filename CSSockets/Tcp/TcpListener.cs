@@ -16,6 +16,7 @@ namespace CSSockets.Tcp
         public event TcpListenerIncomingHandler OnConnection;
 
         public TcpListener() { }
+        public TcpListener(EndPoint endPoint) => Bind(endPoint);
 
         private void CreateBase()
         {
@@ -25,13 +26,12 @@ namespace CSSockets.Tcp
 
         public void Bind(EndPoint endPoint)
         {
-            if (Listening) throw new InvalidOperationException("TcpSocketListener can be bound only when it's not listening");
+            if (Listening) throw new InvalidOperationException("Cannot be bound when listening");
             BindEndPoint = endPoint;
         }
         public void Start()
         {
-            if (Listening)
-                throw new InvalidOperationException("TcpSocketListener is already listening");
+            if (Listening) throw new InvalidOperationException("Already listening");
             Listening = true;
             CreateBase();
             Base.Bind(BindEndPoint);
@@ -40,8 +40,7 @@ namespace CSSockets.Tcp
         }
         public void Stop()
         {
-            if (!Listening)
-                throw new InvalidOperationException("TcpSocketListener isn't listening");
+            if (!Listening) throw new InvalidOperationException("Already not listening");
             Listening = false;
             Base.Close();
         }
@@ -55,7 +54,9 @@ namespace CSSockets.Tcp
                 try { newSocket = Base.Accept(); }
                 catch (SocketException) { return; }
                 catch (ObjectDisposedException) { return; }
-                TcpSocket socket = new TcpSocket(newSocket, this);
+                TcpSocket socket = new TcpSocket(newSocket);
+                socket.Creator = this;
+                socket.LinkToIOHandler();
             }
         }
 

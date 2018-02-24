@@ -22,7 +22,7 @@ namespace CSSockets.WebSockets
         public bool RSV3 { get; set; }
         public bool FIN { get; set; }
         public bool Masked => Mask != null;
-        public long PayloadLength => Payload.Length;
+        public ulong PayloadLength => (ulong)Payload.LongLength;
 
         public Frame() { }
         public Frame(bool fin, byte opcode, bool masked, byte[] payload, bool rsv1 = false, bool rsv2 = false, bool rsv3 = false)
@@ -45,7 +45,7 @@ namespace CSSockets.WebSockets
             switch (payloadSerLen)
             {
                 case 0:
-                    WriteByte(to, (byte)((Masked ? 128 : 0) + PayloadLength));
+                    WriteByte(to, (byte)((Masked ? 128u : 0u) + PayloadLength));
                     break;
                 case 2:
                     WriteByte(to, (byte)((Masked ? 128 : 0) + 126));
@@ -77,12 +77,7 @@ namespace CSSockets.WebSockets
 
         internal void FlipMask()
         {
-            for (long i = 0; i < PayloadLength; i++) Payload[i] = (byte)(Payload[i] ^ Mask[i & 3]);
-        }
-
-        internal static void ArrayCopy(byte[] src, long srcBegin, byte[] dst, long dstBegin, long length)
-        {
-            for (long a = srcBegin, b = dstBegin, c = 0; c < length; c++) dst[b++] = src[a++];
+            for (ulong i = 0; i < PayloadLength; i++) Payload[i] = (byte)(Payload[i] ^ Mask[i & 3]);
         }
     }
 }

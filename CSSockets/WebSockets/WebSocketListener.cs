@@ -2,7 +2,7 @@
 using System.Net;
 using System.Text;
 using CSSockets.Http.Reference;
-using CSSockets.Http.Primitives;
+using CSSockets.Http.Structures;
 using System.Security.Cryptography;
 
 namespace CSSockets.WebSockets
@@ -17,12 +17,11 @@ namespace CSSockets.WebSockets
         public ClientVerifierHandler ClientVerifier { get; set; }
         public event ConnectionHandler OnConnection;
 
-        public WebSocketListener(EndPoint listenEndpoint, HttpPath listenPath)
-            => Base = new Listener(listenEndpoint, listenPath) { OnRequest = OnRequest };
+        public WebSocketListener(EndPoint listenEndpoint) => Base = new Listener(listenEndpoint) { OnRequest = _onRequest };
 
-        private void OnRequest(ClientRequest req, ServerResponse res)
+        private void _onRequest(ClientRequest req, ServerResponse res)
         {
-            if (req.HttpVersion != "HTTP/1.1")
+            if (req.Version != "HTTP/1.1")
             {
                 // bad http version
                 DropRequest(res, 505, "HTTP Version Not Supported", "Use HTTP/1.1");
@@ -76,7 +75,8 @@ namespace CSSockets.WebSockets
             string str = Convert.ToBase64String(result, Base64FormattingOptions.None);
             hasher.Dispose();
 
-            res.SetHead(101, "Switching Protocols");
+            res.ResponseCode = 101;
+            res.ResponseDescription = "Switching Protocols";
             res["Connection"] = "upgrade";
             res["Upgrade"] = "websocket";
             res["Sec-WebSocket-Version"] = "13";
@@ -90,10 +90,14 @@ namespace CSSockets.WebSockets
 
         private void DropRequest(ServerResponse res, ushort code, string reason, string body, params Header[] otherHeaders)
         {
-            res.SetHead(code, reason, new Header("Content-Length", body.Length.ToString()), new Header("Connection", "close"));
-            foreach (Header h in otherHeaders) res.SetHeader(h.Name, h.Value);
+            res.ResponseCode = code;
+            res.ResponseDescription = reason;
+            res["Content-Length"] = body.Length.ToString();
+            res["Connection"] = "close";
+            foreach (Header h in otherHeaders) res[h.Name] = h.Value;
             res.Write(body);
             res.End();
+            res.Connection.End();
         }
 
         private static string ToBase16String(byte[] array)

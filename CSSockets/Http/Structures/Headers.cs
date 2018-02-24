@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 
-namespace CSSockets.Http.Primitives
+namespace CSSockets.Http.Structures
 {
-    sealed public class Header
+    public struct Header
     {
         public string Name { get; }
         public string Value { get; }
@@ -74,14 +74,18 @@ namespace CSSockets.Http.Primitives
             get => Get(headerName);
             set { if (value == null) Remove(headerName); else Set(headerName, value); }
         }
-        public string this[int index]
+        public Header this[int index]
         {
-            get => Get(HeadersAdded[index]);
+            get
+            {
+                string key = HeadersAdded[index];
+                return new Header(key, List[key]);
+            }
             set
             {
-                if (value == null)
+                if (value.Value == null)
                     Remove(HeadersAdded[index]);
-                else Set(HeadersAdded[index], value);
+                else Set(HeadersAdded[index], value.Value);
             }
         }
     }

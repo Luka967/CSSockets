@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Text;
 using CSSockets.Streams;
-using CSSockets.Http.Base;
 using System.IO.Compression;
-using CSSockets.Http.Primitives;
 
 namespace CSSockets.Http.Reference
 {
@@ -13,128 +11,150 @@ namespace CSSockets.Http.Reference
         private static readonly byte[] CRLF_BYTES = Encoding.ASCII.GetBytes(CRLF);
         private static readonly byte[] LAST_CHUNK = Encoding.ASCII.GetBytes("0" + CRLF + CRLF);
 
-        private UnifiedDuplex ContentTransform { get; set; } = null;
-        public bool IsCompressionSet { get; private set; } = false;
-        public CompressionLevel CompressionLevel { get; set; } = CompressionLevel.Optimal;
-        public TransferEncoding TransferEncoding { get; private set; } = TransferEncoding.None;
-        public CompressionType Compression { get; private set; } = CompressionType.Unknown;
-        public int ContentLength { get; private set; } = -1;
+        private UnifiedDuplex transform = null;
+        private BodyType? type = null;
 
-        private bool IsSet { get; set; } = false;
+        public ulong? ContentLength { get; private set; } = null;
+        public ulong? CurrentContentLength { get; private set; } = null;
+        public CompressionType CompressionType => type?.CompressionType ?? throw new InvalidOperationException("Not set");
+        public TransferEncoding TransferEncoding => type?.TransferEncoding ?? throw new InvalidOperationException("Not set");
+        public event ControlHandler OnFinish;
 
-        public bool TrySetFor(MessageHead head)
+        public bool TrySetFor(BodyType detected, CompressionLevel compressionLevel = CompressionLevel.Optimal)
         {
-            ThrowIfEnded();
-            BodyType? bodyType = BodyType.TryDetectFor(head);
-            if (bodyType == null) return false;
-
-            CompressionType compression = bodyType.Value.CompressionType;
-            TransferEncoding transfer = bodyType.Value.TransferEncoding;
-            int contentLength = bodyType.Value.ContentLength;
-
-            if (IsSet) Finish();
-
-            IsSet = true;
-            TransferEncoding = transfer;
-            ContentLength = contentLength;
-            if (Compression != CompressionType.Unknown) return true;
-            Compression = compression;
-            switch (compression)
+            lock (Wlock)
             {
-                case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); IsCompressionSet = false; break;
-                case CompressionType.Gzip: ContentTransform = new GzipCompressor(CompressionLevel); IsCompressionSet = true; break;
-                case CompressionType.Deflate: ContentTransform = new DeflateCompressor(CompressionLevel); IsCompressionSet = true; break;
-                case CompressionType.Compress: return false;
-                default: return false;
+                if (Ended) return false;
+
+                CompressionType compression = detected.CompressionType;
+                TransferEncoding transfer = detected.TransferEncoding;
+                ulong? contentLength = detected.ContentLength;
+
+                if (type != null) Reset();
+                if (transfer == TransferEncoding.Raw)
+                    ContentLength = detected.ContentLength;
+                type = detected;
+                CurrentContentLength = 0;
+                return transfer == TransferEncoding.None ? true : SetCompression(compression);
             }
-            return true;
         }
-        public void SetFor(MessageHead head)
+        public bool SetCompression(CompressionType compression, CompressionLevel compressionLevel = CompressionLevel.Optimal)
         {
-            if (!TrySetFor(head)) throw new ArgumentException("Could not figure out body encoding");
-        }
-        public void Compress(CompressionType compressionType)
-        {
-            if (IsSet) throw new InvalidOperationException("Explicitly setting compression type must be performed before headers get sent");
-            Compression = compressionType;
-            switch (compressionType)
+            lock (Wlock)
             {
-                case CompressionType.None: ContentTransform = new RawUnifiedDuplex(); IsCompressionSet = false; break;
-                case CompressionType.Gzip: ContentTransform = new GzipCompressor(CompressionLevel); IsCompressionSet = true; break;
-                case CompressionType.Deflate: ContentTransform = new DeflateCompressor(CompressionLevel); IsCompressionSet = true; break;
-                case CompressionType.Compress: throw new NotImplementedException("Got Compress, an unimplemented compression, as compression type");
-                default: throw new ArgumentException("Got Unknown as compression type");
+                if (!type.HasValue) return false;
+                if (CurrentContentLength > 0) return false;
+                if (transform != null) transform.End();
+                if (type.Value.TransferEncoding != TransferEncoding.None)
+                    switch (compression)
+                    {
+                        case CompressionType.None: transform = new MemoryDuplex(); break;
+                        case CompressionType.Gzip: transform = new GzipCompressor(compressionLevel); break;
+                        case CompressionType.Deflate: transform = new DeflateCompressor(compressionLevel); break;
+                        default: return false;
+                    }
+                else return false;
+                type = new BodyType(type.Value.ContentLength, type.Value.TransferEncoding, compression);
+                return true;
             }
         }
 
-        public override byte[] Read() => Bread();
-        public override byte[] Read(int length) => Bread(length);
-        public override void Write(byte[] data)
-        {
-            ThrowIfEnded();
-            if (!IsSet) throw new InvalidOperationException("Not set");
-
-            // pass data through ContentTransform
-            ContentTransform.Write(data);
-            if (ContentTransform.Buffered == 0) return; // no data available
-            data = ContentTransform.Read();
-            WriteTransformed(data);
-        }
-
-        private void WriteTransformed(byte[] data)
+        private bool WriteTransformed(byte[] source)
         {
             switch (TransferEncoding)
             {
-                case TransferEncoding.None: throw new InvalidOperationException("TransferEncoding is None");
+                case TransferEncoding.None: return false;
                 case TransferEncoding.Raw:
-                    if (data == null) break;
-                    ContentLength += data.Length;
-                    Bhandle(data);
+                    if (source == null) return true;
+                    ulong len = (ulong)source.LongLength;
+                    if (CurrentContentLength + len > ContentLength) return false;
+                    CurrentContentLength += len;
+                    Bhandle(source);
+                    if (CurrentContentLength == ContentLength) return Finish();
                     break;
                 case TransferEncoding.Chunked:
-                    if (data != null)
+                    if (source != null)
                     {
-                        string str = data.Length.ToString("X");
+                        string str = source.Length.ToString("X");
                         Bhandle(Encoding.ASCII.GetBytes(str));
                         Bhandle(CRLF_BYTES);
-                        Bhandle(data);
+                        Bhandle(source);
                         Bhandle(CRLF_BYTES);
-                        ContentLength += str.Length + 2 + data.Length + 2;
+                        CurrentContentLength += (ulong)source.Length + 2 + (ulong)source.LongLength + 2;
                     }
                     else
                     {
                         // last chunk
                         Bhandle(LAST_CHUNK);
-                        ContentLength += 5;
+                        ContentLength = CurrentContentLength += 5;
+                        return Finish();
                     }
                     break;
             }
+            return false;
         }
-
-        public void Finish()
+        public override bool Write(byte[] source)
         {
-            ThrowIfEnded();
-            if (!IsSet) throw new InvalidOperationException("Not set");
-            if (IsCompressionSet)
+            lock (Wlock)
             {
-                // compressed data footer
-                CompressorDuplex compressor = ContentTransform as CompressorDuplex;
-                compressor.Finish();
-                WriteTransformed(compressor.Read());
-            }
-            WriteTransformed(null);
-            IsSet = false;
-            ContentTransform.End();
-            IsCompressionSet = false;
-            TransferEncoding = TransferEncoding.None;
-            Compression = CompressionType.Unknown;
-            ContentLength = -1;
-        }
+                if (Ended) return false;
+                if (type == null) return false;
+                if (type.Value.TransferEncoding == TransferEncoding.None)
+                    return false;
+                if (source == null) return true;
 
-        public override void End()
+                transform.Write(source);
+                if (transform.Buffered > 0)
+                    return WriteTransformed(transform.Read());
+                return true;
+            }
+        }
+        public override bool Write(byte[] source, ulong start, ulong end)
+            => Write(PrimitiveBuffer.Slice(source, start, end));
+        public override byte[] Read() => Bread();
+        public override byte[] Read(ulong length) => Bread(length);
+        public override ulong Read(byte[] destination) => Bread(destination);
+
+        public bool Reset()
         {
-            if (IsSet) Finish();
-            base.End();
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                if (type == null) return false;
+                if (TransferEncoding != TransferEncoding.None && !transform.End()) return false;
+                ContentLength = CurrentContentLength = null;
+                transform = null;
+                type = null;
+                return true;
+            }
+        }
+        public bool Finish()
+        {
+            lock (Wlock)
+            {
+                if (Ended) return false;
+                if (type == null) return false;
+                if (TransferEncoding != TransferEncoding.None)
+                {
+                    if (CompressionType != CompressionType.None && CompressionType != CompressionType.Unknown)
+                    {
+                        CompressorDuplex compressor = transform as CompressorDuplex;
+                        compressor.Finish();
+                        if (compressor.Buffered > 0) WriteTransformed(compressor.Read());
+                    }
+                    WriteTransformed(null);
+                }
+                OnFinish?.Invoke();
+                return Reset();
+            }
+        }
+        public override bool End()
+        {
+            lock (Wlock)
+            {
+                if (type != null && !Finish()) return false;
+                return base.End();
+            }
         }
     }
 }

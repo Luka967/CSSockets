@@ -1,13 +1,13 @@
 ﻿using System;
 
-namespace CSSockets.Http.Primitives
+namespace CSSockets.Http.Structures
 {
-    sealed public class HttpVersion
+    public sealed class Version
     {
         public byte Major { get; set; }
         public byte Minor { get; set; }
 
-        public static bool TryParse(string str, out HttpVersion result)
+        public static bool TryParse(string str, out Version result)
         {
             result = null;
             if (str.Length < 5 || !str.StartsWith("HTTP/"))
@@ -20,17 +20,17 @@ namespace CSSockets.Http.Primitives
                 return false;
             if (!byte.TryParse(split[1], out byte _2))
                 return false;
-            result = new HttpVersion(_1, _2);
+            result = new Version(_1, _2);
             return true;
         }
-        public static HttpVersion Parse(string str)
+        public static Version Parse(string str)
         {
-            if (!TryParse(str, out HttpVersion result))
+            if (!TryParse(str, out Version result))
                 throw new ArgumentException("Invalid string format");
             return result;
         }
-       
-        public HttpVersion(byte major, byte minor)
+
+        public Version(byte major, byte minor)
         {
             Major = major;
             Minor = minor;
@@ -39,24 +39,24 @@ namespace CSSockets.Http.Primitives
         public override string ToString()
             => "HTTP/" + Major + "." + Minor;
 
-        public static implicit operator Version(HttpVersion version)
-            => new Version(version.Major, version.Minor);
-        public static implicit operator HttpVersion(Version version)
+        public static implicit operator System.Version(Version version)
+            => new System.Version(version.Major, version.Minor);
+        public static implicit operator Version(System.Version version)
         {
             if (version.Revision != -1 || version.Build != -1 ||
                 version.Major < 0 || version.Minor < 0 ||
                 version.Major > 255 || version.Minor > 255)
                 throw new InvalidOperationException("Cannot convert version " + version + " to an HTTP version");
-            return new HttpVersion((byte)version.Major, (byte)version.Minor);
+            return new Version((byte)version.Major, (byte)version.Minor);
         }
-        public static implicit operator HttpVersion(string str) => Parse(str);
-        public static bool operator ==(HttpVersion a, HttpVersion b)
+        public static implicit operator Version(string str) => Parse(str);
+        public static bool operator ==(Version a, Version b)
         {
             if (a is null && b is null) return true;
             if (a is null || b is null) return false;
             return a.Major == b.Major && a.Minor == b.Minor;
         }
-        public static bool operator !=(HttpVersion a, HttpVersion b)
+        public static bool operator !=(Version a, Version b)
         {
             if (a is null && b is null) return false;
             if (a is null || b is null) return true;
@@ -65,9 +65,9 @@ namespace CSSockets.Http.Primitives
         public override bool Equals(object obj)
         {
             if (obj is null) return false;
-            if (!(obj is HttpVersion)) return false;
-            HttpVersion obj_ = obj as HttpVersion;
-            return Major == obj_.Major && Minor == obj_.Minor;
+            if (!(obj is Version)) return false;
+            Version actual = (Version)obj;
+            return Major == actual.Major && Minor == actual.Minor;
         }
         public override int GetHashCode() => Major * 256 + Minor;
     }

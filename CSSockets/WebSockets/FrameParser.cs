@@ -1,6 +1,6 @@
 ﻿using System;
-using CSSockets.Base;
 using CSSockets.Streams;
+using CSSockets.Http.Base;
 
 namespace CSSockets.WebSockets
 {
@@ -12,11 +12,11 @@ namespace CSSockets.WebSockets
         Mask = 3,
         Payload = 4
     }
-    public class FrameParser : BaseWritable, IQueueableAsyncOutputter<Frame>
+    public class FrameParser : BaseWritable, IQueueingOutputter<Frame>
     {
         private Queue<Frame> FrameQueue { get; } = new Queue<Frame>();
-        public int QueuedCount => FrameQueue.Count;
-        public event AsyncCreationHandler<Frame> OnOutput;
+        public int Queued => FrameQueue.Count;
+        public event OutputterHandler<Frame> OnOutput;
         protected void PushIncoming()
         {
             if (OnOutput != null) OnOutput(Incoming);
@@ -25,7 +25,7 @@ namespace CSSockets.WebSockets
         }
         public Frame Next()
         {
-            ThrowIfEnded();
+            if (Ended) return null;
             if (!FrameQueue.Dequeue(out Frame next))
                 // ended
                 return null;
@@ -34,13 +34,13 @@ namespace CSSockets.WebSockets
 
         private Frame Incoming { get; set; } = new Frame();
         private FrameParserState State { get; set; } = FrameParserState.Head1;
-        private long Temp1 { get; set; } = 0;
+        private ulong Temp1 { get; set; } = 0;
         private byte[] Temp2 { get; set; } = null;
 
         protected override void HandleData(byte[] data)
         {
-            byte b; long len;
-            for (long i = 0; i < data.LongLength;)
+            byte b; ulong len, dataLen = (ulong)data.LongLength;
+            for (ulong i = 0; i < dataLen;)
             {
                 switch (State)
                 {
@@ -70,30 +70,31 @@ namespace CSSockets.WebSockets
                         }
                         break;
                     case FrameParserState.ExtendedLen:
-                        len = Math.Min(Temp2.LongLength - Temp1, data.LongLength - i);
-                        Frame.ArrayCopy(data, i, Temp2, Temp1, len);
+                        ulong tempLen = (ulong)Temp2.LongLength;
+                        len = Math.Min(tempLen - Temp1, dataLen - i);
+                        PrimitiveBuffer.Copy(data, i, Temp2, Temp1, len);
                         Temp1 += len; i += len;
-                        if (Temp2.LongLength != Temp1) break;
+                        if (tempLen != Temp1) break;
                         len = 0;
                         if (Temp2.LongLength == 2)
-                            len = Temp2[0] * 256 + Temp2[1];
-                        else len = Temp2[0] * 72057594037927940 + Temp2[1] * 281474976710656 + Temp2[2] * 1099511627776
-                                + Temp2[3] * 4294967296 + Temp2[4] * 16777216 + Temp2[5] * 65536 + Temp2[6] * 256 + Temp2[7];
+                            len = Temp2[0] * 256u + Temp2[1];
+                        else len = Temp2[0] * 72057594037927940u + Temp2[1] * 281474976710656u + Temp2[2] * 1099511627776u
+                                + Temp2[3] * 4294967296u + Temp2[4] * 16777216u + Temp2[5] * 65536u + Temp2[6] * 256u + Temp2[7];
                         Incoming.Payload = new byte[len];
                         Temp1 = 0; Temp2 = null;
                         State = Incoming.Masked ? FrameParserState.Mask : FrameParserState.Payload;
                         break;
                     case FrameParserState.Mask:
-                        len = Math.Min(4 - Temp1, data.LongLength - i);
-                        Frame.ArrayCopy(data, i, Incoming.Mask, Temp1, len);
+                        len = Math.Min(4 - Temp1, dataLen - i);
+                        PrimitiveBuffer.Copy(data, i, Incoming.Mask, Temp1, len);
                         Temp1 += len; i += len;
                         if (Temp1 != 4) break;
                         Temp1 = 0;
                         State = FrameParserState.Payload;
                         break;
                     case FrameParserState.Payload:
-                        len = Math.Min(Incoming.PayloadLength - Temp1, data.LongLength - i);
-                        Frame.ArrayCopy(data, i, Incoming.Payload, Temp1, len);
+                        len = Math.Min(Incoming.PayloadLength - Temp1, dataLen - i);
+                        PrimitiveBuffer.Copy(data, i, Incoming.Payload, Temp1, len);
                         Temp1 += len; i += len;
                         if (Temp1 != Incoming.PayloadLength) break;
                         if (Incoming.Masked) Incoming.FlipMask();
@@ -105,10 +106,11 @@ namespace CSSockets.WebSockets
             }
         }
 
-        public override void End()
+        public override bool End()
         {
-            base.End();
+            if (!base.End()) return false;
             FrameQueue.End();
+            return true;
         }
     }
 }

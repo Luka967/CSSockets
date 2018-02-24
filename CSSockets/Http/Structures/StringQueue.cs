@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Text;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
 
-namespace CSSockets.Http.Primitives
+namespace CSSockets.Http.Structures
 {
     sealed public class StringQueue
     {

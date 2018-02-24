@@ -186,14 +186,4 @@ namespace CSSockets.Tcp
             }
         }
     }
-    public static class Extensions
-    {
-        public static string ByteArrayToString(this byte[] array)
-        {
-            if (array.LongLength == 0) return "";
-            string s = "";
-            foreach (byte item in array) s += item.ToString("X2");
-            return s;
-        }
-    }
 }

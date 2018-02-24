@@ -6,7 +6,7 @@ namespace CSSockets.WebSockets
 {
     public enum FrameMergeResponse : byte
     {
-        Valid = 0,
+        Success = 0,
         ContinuationOnNoOpcode = 1,
         OpcodeOnNonFin = 2
     }
@@ -40,7 +40,7 @@ namespace CSSockets.WebSockets
                 DataLength += frame.PayloadLength;
                 if (frame.FIN) Deflate();
             }
-            return FrameMergeResponse.Valid;
+            return FrameMergeResponse.Success;
         }
 
         public Message Next()

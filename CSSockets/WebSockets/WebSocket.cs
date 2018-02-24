@@ -67,7 +67,7 @@ namespace CSSockets.WebSockets
                 case FrameMergeResponse.OpcodeOnNonFin:
                     ForciblyClose();
                     break;
-                case FrameMergeResponse.Valid: break;
+                case FrameMergeResponse.Success: break;
             }
         }
 

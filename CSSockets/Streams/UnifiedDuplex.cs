@@ -184,6 +184,7 @@ namespace CSSockets.Streams
             {
                 if (Ended) return false;
                 if (data.Length == 0) return false;
+                if (Rpaused) return Bwrite(data);
                 ulong len = (ulong)data.LongLength;
                 Wwritten += len;
                 bool something = false;

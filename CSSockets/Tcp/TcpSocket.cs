@@ -115,6 +115,7 @@ namespace CSSockets.Tcp
                     OnClose?.Invoke();
                     return true;
                 case TcpSocketOp.Terminate:
+                    if (State == TcpSocketState.Closed) return false;
                     Base.Dispose();
                     State = TcpSocketState.Closed;
                     if (!ReadableEnded) EndReadable();
@@ -122,6 +123,7 @@ namespace CSSockets.Tcp
                     OnClose?.Invoke();
                     return true;
                 case TcpSocketOp.Close:
+                    if (State == TcpSocketState.Closed) return false;
                     Base.Close();
                     State = TcpSocketState.Closed;
                     if (!ReadableEnded) EndReadable();
@@ -129,12 +131,14 @@ namespace CSSockets.Tcp
                     OnClose?.Invoke();
                     return true;
                 case TcpSocketOp.EndWrite:
+                    if (WritableEnded) return false;
                     State = TcpSocketState.Closing;
                     Base.Shutdown(SocketShutdown.Send);
                     EndWritable();
                     if (ReadableEnded) return Control(TcpSocketOp.Close);
                     return false;
                 case TcpSocketOp.EndRead:
+                    if (ReadableEnded) return false;
                     State = TcpSocketState.Closing;
                     Base.Shutdown(SocketShutdown.Receive);
                     EndReadable();

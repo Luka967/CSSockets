@@ -64,6 +64,7 @@ namespace CSSockets.Streams
                 {
                     if (Ended) return false;
                     if (IsPaused) return false;
+                    Rpaused = true;
                     Rpause.Reset();
                     return true;
                 }
@@ -74,6 +75,7 @@ namespace CSSockets.Streams
                 {
                     if (Ended) return false;
                     if (!IsPaused) return false;
+                    Rpaused = false;
                     Rpause.Set();
                     BcheckNewPathing();
                     return true;

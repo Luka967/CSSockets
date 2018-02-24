@@ -48,7 +48,7 @@ namespace CSSockets.Http.Reference
         private void onConnection(TcpSocket socket)
         {
             ServerConnection connection = new ServerConnection(socket, onRequest);
-            socket.OnClose += () => { lock (sync) connections.Remove(connection); };
+            connection.OnEnd += () => { lock (sync) connections.Remove(connection); };
             lock (sync)
             {
                 if (!Base.Listening) { connection.Terminate(); return; }

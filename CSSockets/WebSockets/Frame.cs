@@ -49,19 +49,19 @@ namespace CSSockets.WebSockets
                     break;
                 case 2:
                     WriteByte(to, (byte)((Masked ? 128 : 0) + 126));
-                    WriteByte(to, (byte)((PayloadLength >> 8) & 255));
-                    WriteByte(to, (byte)(PayloadLength & 255));
+                    WriteByte(to, (byte)(PayloadLength / 256u));
+                    WriteByte(to, (byte)(PayloadLength % 256u));
                     break;
                 case 8:
                     WriteByte(to, (byte)((Masked ? 128 : 0) + 127));
-                    WriteByte(to, (byte)((PayloadLength >> 56) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 48) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 40) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 32) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 24) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 16) & 255));
-                    WriteByte(to, (byte)((PayloadLength >> 8) & 255));
-                    WriteByte(to, (byte)(PayloadLength & 255));
+                    WriteByte(to, (byte)(PayloadLength / 72057594037927940u));
+                    WriteByte(to, (byte)(PayloadLength / 281474976710656u));
+                    WriteByte(to, (byte)(PayloadLength / 1099511627776u));
+                    WriteByte(to, (byte)(PayloadLength / 4294967296u));
+                    WriteByte(to, (byte)(PayloadLength / 16777216u));
+                    WriteByte(to, (byte)(PayloadLength / 65536u));
+                    WriteByte(to, (byte)(PayloadLength / 256u));
+                    WriteByte(to, (byte)(PayloadLength % 256u));
                     break;
             }
             if (Masked)

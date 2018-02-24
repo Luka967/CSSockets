@@ -168,7 +168,7 @@ namespace CSSockets.Tcp
                         Socket s = w[i]; TcpSocket ts = Wrappers[s];
                         byte[] data = ts.ReadWritable();
                         s.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
-                        if (code != SocketError.Success) ee.Add((s, code));
+                        if (code != SocketError.Success && !re.Contains(s)) ee.Add((s, code));
                     }
 
                     for (int i = 0; i < re.Count; i++)

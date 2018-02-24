@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26730.12
+VisualStudioVersion = 15.0.27130.2010
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSSockets", "CSSockets.csproj", "{AC828306-A9D4-4145-9F59-AD3BB023F2FB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CSSockets", "CSSockets.csproj", "{AC828306-A9D4-4145-9F59-AD3BB023F2FB}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Test", "G:\2017\c#\CSSockets2\Test\Test.csproj", "{9BCE1EED-8407-48A9-8FC9-7AEB1C9D06BF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{AC828306-A9D4-4145-9F59-AD3BB023F2FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AC828306-A9D4-4145-9F59-AD3BB023F2FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AC828306-A9D4-4145-9F59-AD3BB023F2FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9BCE1EED-8407-48A9-8FC9-7AEB1C9D06BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9BCE1EED-8407-48A9-8FC9-7AEB1C9D06BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9BCE1EED-8407-48A9-8FC9-7AEB1C9D06BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9BCE1EED-8407-48A9-8FC9-7AEB1C9D06BF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

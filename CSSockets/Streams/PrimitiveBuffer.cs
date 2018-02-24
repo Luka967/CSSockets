@@ -21,7 +21,7 @@ namespace CSSockets.Streams
             ulong beforeLen = Length;
             Length = targetLen;
             ulong targetCap = Capacity;
-            if (targetCap > targetLen) while (targetCap / CMM > CMM && targetCap / CMM > targetLen) targetCap /= CMM;
+            if (targetCap > targetLen) while (targetCap / CMM >= CMM && targetCap / CMM > targetLen) targetCap /= CMM;
             else while (targetCap < targetLen) targetCap *= CMM;
             if (targetCap == Capacity) return;
             byte[] newBuf = new byte[targetCap];
@@ -39,7 +39,7 @@ namespace CSSockets.Streams
             {
                 Copy(src, 0, dst, 0, length);
                 ulong remaining = Length - length;
-                Copy(src, 0, src, length, remaining);
+                Copy(src, length, src, 0, remaining);
                 EnsureCapacity(remaining);
             }
             return ret;

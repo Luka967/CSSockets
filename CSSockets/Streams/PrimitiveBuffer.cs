@@ -54,10 +54,23 @@ namespace CSSockets.Streams
                 Copy(src, 0, dst, start, len);
         }
 
+        // windows
         [DllImport("msvcrt.dll", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl, SetLastError = false), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* MEMCPY(void* dest, void* src, ulong count);
+        private static unsafe extern void* WMEMCPY(void* dest, void* src, ulong count);
         [DllImport("msvcrt.dll", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl, SetLastError = false), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* MEMCPY(void* dest, void* src, int count);
+        private static unsafe extern void* WMEMCPY(void* dest, void* src, int count);
+
+        // *nix
+        [DllImport("libc", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl), SuppressUnmanagedCodeSecurity]
+        private static unsafe extern void* UMEMCPY(void* dest, void* src, ulong count);
+        [DllImport("libc", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl), SuppressUnmanagedCodeSecurity]
+        private static unsafe extern void* UMEMCPY(void* dest, void* src, int count);
+
+        public static bool IS_WINDOWS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        private static unsafe void* MEMCPY(void* dest, void* src, ulong count)
+            => IS_WINDOWS ? WMEMCPY(dest, src, count) : UMEMCPY(dest, src, count);
+        private static unsafe void* MEMCPY(void* dest, void* src, int count)
+            => IS_WINDOWS ? WMEMCPY(dest, src, count) : UMEMCPY(dest, src, count);
 
         public static unsafe byte[] Slice(byte[] source, ulong start, ulong end)
         {

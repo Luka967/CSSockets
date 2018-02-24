@@ -93,7 +93,7 @@ namespace CSSockets.Http.Reference
             {
                 ThrowIfEnded();
                 if (!type.HasValue) return false;
-                ulong i = 0, sourceLen = (ulong)source.LongLength, len; char c; byte[] sliced;
+                ulong i = 0, sourceLen = (ulong)source.LongLength, len; char c;
                 for (; i < sourceLen;)
                 {
                     switch (state)

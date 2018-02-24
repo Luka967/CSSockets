@@ -1,6 +1,6 @@
-﻿using System;
-using System.Text;
+﻿using System.Text;
 using CSSockets.Tcp;
+using CSSockets.Streams;
 using CSSockets.Http.Reference;
 
 namespace CSSockets.WebSockets
@@ -17,7 +17,7 @@ namespace CSSockets.WebSockets
                 byte[] payload = new byte[2 + reason.Length];
                 payload[0] = (byte)(code >> 8);
                 payload[1] = (byte)(code & 255);
-                Buffer.BlockCopy(reasonBuf, 0, payload, 2, reasonBuf.Length);
+                PrimitiveBuffer.Copy(reasonBuf, 0, payload, 2, reasonBuf.Length);
                 Send(new Frame(true, 8, false, payload, false, false, false));
                 InitiateClose(code, reason);
             }
@@ -68,7 +68,7 @@ namespace CSSockets.WebSockets
                 byte[] payload = new byte[2 + reason.Length];
                 payload[0] = (byte)(code >> 8);
                 payload[1] = (byte)(code & 255);
-                Buffer.BlockCopy(reasonBuf, 0, payload, 2, reasonBuf.Length);
+                PrimitiveBuffer.Copy(reasonBuf, 0, payload, 2, reasonBuf.Length);
                 Send(new Frame(true, 8, true, payload, false, false, false));
                 InitiateClose(code, reason);
             }

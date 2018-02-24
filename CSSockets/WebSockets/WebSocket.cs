@@ -45,7 +45,11 @@ namespace CSSockets.WebSockets
             FrameParser.OnOutput += OnIncomingFrame;
             FrameMerger.OnOutput += OnIncomingMessage;
         }
-        internal void WriteTrail(byte[] trail) => FrameParser.Write(trail);
+        internal void WriteTrail(byte[] trail)
+        {
+            FrameParser.Write(trail);
+            Base.Pipe(FrameParser);
+        }
 
         abstract protected bool IsValidFrame(Frame frame);
 

@@ -10,7 +10,7 @@ namespace CSSockets.Http.Reference
     {
         public EndPoint EndPoint { get; }
         public bool Listening => Base.Listening;
-        private readonly TcpListener Base;
+        private readonly Tcp.Listener Base;
         private readonly HashSet<ServerConnection> connections = new HashSet<ServerConnection>();
         private readonly object sync = new object();
 
@@ -29,7 +29,7 @@ namespace CSSockets.Http.Reference
         public Listener(EndPoint endPoint)
         {
             EndPoint = endPoint;
-            Base = new TcpListener(endPoint);
+            Base = new Tcp.Listener(endPoint);
             Base.OnConnection += onConnection;
         }
 
@@ -45,7 +45,7 @@ namespace CSSockets.Http.Reference
             }
         }
 
-        private void onConnection(TcpSocket socket)
+        private void onConnection(Connection socket)
         {
             ServerConnection connection = new ServerConnection(socket, onRequest);
             connection.OnEnd += () => { lock (sync) connections.Remove(connection); };

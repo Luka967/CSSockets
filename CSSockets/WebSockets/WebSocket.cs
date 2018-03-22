@@ -12,7 +12,7 @@ namespace CSSockets.WebSockets
     public delegate void CloseMessageHandler(ushort code, string reason);
     abstract public class WebSocket : IPausable, ICorkable
     {
-        public TcpSocket Base { get; set; }
+        public Connection Base { get; set; }
         public TcpSocketState State => Base.State;
         protected void ThrowIfNotOpen()
         {
@@ -36,7 +36,7 @@ namespace CSSockets.WebSockets
         protected FrameParser FrameParser { get; } = new FrameParser();
         protected FrameMerger FrameMerger { get; } = new FrameMerger();
 
-        protected WebSocket(TcpSocket socket, RequestHead head)
+        protected WebSocket(Connection socket, RequestHead head)
         {
             Base = socket;
             Base.OnClose += OnSurpriseEnd;

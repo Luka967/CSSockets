@@ -8,7 +8,7 @@ namespace CSSockets.Http.Base
         where TParse : Head, new()
         where TSerial : Head, new()
     {
-        public TcpSocket Base { get; } = null;
+        public Connection Base { get; } = null;
         public bool Ended { get; private set; } = false;
         public bool Terminated { get; private set; } = false;
         protected readonly object OpsLock = new object();
@@ -20,7 +20,7 @@ namespace CSSockets.Http.Base
         public BodyParser BodyParser { get; protected set; } = null;
         public BodySerializer BodySerializer { get; protected set; } = null;
 
-        public Connection(TcpSocket socket)
+        public Connection(Connection socket)
         {
             Base = socket;
             Base.OnClose += () => End();

@@ -155,6 +155,7 @@ namespace CSSockets.Streams
                 }
                 byte[] dst = new byte[length];
                 Read(dst);
+                if (Buffered == 0) OnDrain?.Invoke();
                 return dst;
             }
         }
@@ -197,7 +198,6 @@ namespace CSSockets.Streams
                 }
                 if (_dataEvent != null) { _dataEvent?.Invoke(data); something = true; }
                 if (Rtarget != null || !something) Bwrite(data);
-                if (Ended || Buffered == 0) OnDrain?.Invoke();
                 return true;
             }
         }

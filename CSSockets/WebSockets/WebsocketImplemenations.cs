@@ -7,7 +7,7 @@ namespace CSSockets.WebSockets
 {
     public class ServerWebSocket : WebSocket
     {
-        public ServerWebSocket(TcpSocket socket, RequestHead head) : base(socket, head) { }
+        public ServerWebSocket(Connection socket, RequestHead head) : base(socket, head) { }
 
         public override void Close(ushort code, string reason)
         {
@@ -58,7 +58,7 @@ namespace CSSockets.WebSockets
 
     public class ClientWebSocket : WebSocket
     {
-        public ClientWebSocket(TcpSocket socket, RequestHead head) : base(socket, head) { }
+        public ClientWebSocket(Connection socket, RequestHead head) : base(socket, head) { }
 
         public override void Close(ushort code, string reason)
         {

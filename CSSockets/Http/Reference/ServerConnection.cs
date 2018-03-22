@@ -10,7 +10,7 @@ namespace CSSockets.Http.Reference
         static int id = 0;
         int mid = ++id;
         int reqc = 0;
-        public ServerConnection(TcpSocket socket, ClientRequestHandler handler) : base(socket)
+        public ServerConnection(Connection socket, ClientRequestHandler handler) : base(socket)
             => Handler = handler;
 
         public (ClientRequest req, ServerResponse res)? CurrentMessage { get; private set; } = null;

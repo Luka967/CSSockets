@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 
-namespace CSSockets.Tcp.Wrap
+namespace CSSockets.Tcp
 {
     public delegate void SocketErrorHandler(SocketError error);
     public delegate void ConnectionHandler(Connection newConnection);
@@ -16,7 +16,7 @@ namespace CSSockets.Tcp.Wrap
     {
         Unset = 0,                  // no owner
         Dormant = 1,                // no type
-        ServerWaitBind = 2,         // server, no bind
+        ServerDormant = 2,          // server, no bind
         ServerBound = 3,            // server, has bind
         ServerListening = 4,        // server, listening
         ClientDormant = 5,          // client, no socket
@@ -25,8 +25,7 @@ namespace CSSockets.Tcp.Wrap
         ClientReadonly = 8,         // client, has socket, can only read
         ClientWriteonly = 9,        // client, has socket, can only write
         ClientLastWrite = 10,       // client, has socket, writing from buffer
-        ClientClosed = 11,          // client, waiting for close
-        Destroyed = 12              // nothing available
+        Destroyed = 11              // nothing available
     }
 
     public enum IOOperationType : byte
@@ -38,9 +37,10 @@ namespace CSSockets.Tcp.Wrap
         ServerLookup = 4,
         ServerListen = 5,
         ServerTerminate = 6,
-        ClientConnect = 7,
-        ClientShutdown = 8,
-        ClientTerminate = 9
+        ClientOpen = 7,
+        ClientConnect = 8,
+        ClientShutdown = 9,
+        ClientTerminate = 10
     }
     public struct IOOperation
     {
@@ -48,11 +48,8 @@ namespace CSSockets.Tcp.Wrap
         public SocketWrapper Callee { get; set; }
         public IOOperationType Type { get; set; }
         public EndPoint Lookup { get; set; }
-        public Connection User_1 { get; set; }
-        public Listener User_2 { get; set; }
+        public Connection Connection { get; set; }
+        public Listener Listener { get; set; }
         public WrapperState AdvanceFrom => Callee.State;
-        public WrapperState AdvanceTo { get; set; }
-        public WrapperState FailAdvanceTo { get; set; }
-        public WrapperState BrokenAdvanceTo { get; set; }
     }
 }

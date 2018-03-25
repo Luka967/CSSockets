@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using CSSockets.Http.Base;
 using System.Net.Security;
 using CSSockets.WebSockets;
+using System.Collections.Generic;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Structures;
 using static System.Text.Encoding;
@@ -19,7 +20,7 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            WebSocketListenerTest(args);
+            TcpSocketScalabilityTest(args);
         }
 
         public static void RawSocketNonBlockingConnectTest(string[] args)
@@ -69,50 +70,118 @@ namespace Test
             Thread.Sleep(2000);
         }
 
+        struct TcpSocketScalabilityMetrics
+        {
+            public int attempts,
+                clientCreated,
+                clientActive,
+                clientSuccessful,
+                clientError,
+                serverActive,
+                serverTimeout,
+                serverSuccessful,
+                serverError,
+                datasSent,
+                datasReceieved;
+
+            public override string ToString()
+            {
+                return string.Format(
+                    "client: {0:0000}c/{1:0000}a/{2:0000}s/{3:0000}e/{4:0000}T" +
+                    " server: {5:0000}a/{6:0000}t/{7:0000}s/{8:0000}e/{9:0000}T" +
+                    " data: {10:0000}s/{11:0000}r" +
+                    " io: {12:0000}c/{13:0000}l/{14:0000}s/{15:00}t",
+                    clientCreated, clientActive, clientSuccessful, clientError, clientSuccessful + clientError,
+                    serverActive, serverTimeout, serverSuccessful, serverError, serverSuccessful + serverError + serverTimeout,
+                    datasSent, datasReceieved,
+                    IOControl.ConnectionCount, IOControl.ListenerCount, IOControl.SocketCount, IOControl.ThreadCount
+                );
+            }
+        }
+
         public static void TcpSocketScalabilityTest(string[] args)
         {
-            IPEndPoint cendPoint = new IPEndPoint(IPAddress.Loopback, 420);
-            IPEndPoint sendPoint = new IPEndPoint(IPAddress.Any, 420);
-            int attempts = 2000;
-            int servers = 0, serverS = 0, clients = 0, clientS = 0, clientE = 0, datasSent = 0, datasRecv = 0;
-            byte[] data = new byte[] { 1, 2, 3, 4, 5 };
+            EndPoint clientEndPoint = new IPEndPoint(IPAddress.Loopback, 420);
+            EndPoint serverendPoint = new IPEndPoint(IPAddress.Any, 420);
+            byte[] sending = new byte[] { 1, 2, 3, 4, 5 };
 
-            TcpListener listener = new TcpListener(sendPoint);
-            listener.Backlog = 10 * attempts;
+            TcpSocketScalabilityMetrics metrics = new TcpSocketScalabilityMetrics();
+            metrics.attempts = 2000;
+
+            TcpListener listener = new TcpListener();
+            listener.Backlog = metrics.attempts;
+            listener.BindEndPoint = serverendPoint;
             listener.OnConnection += (server) =>
             {
-                servers++;
-                serverS++;
-                server.OnData += (actualData) => datasRecv++;
-                server.OnClose += () => servers--;
+                Interlocked.Increment(ref metrics.serverActive);
+                server.TimeoutAfter = new TimeSpan(0, 0, 5);
+                server.OnData += (data) => Interlocked.Increment(ref metrics.datasReceieved);
+                server.OnError += (e) =>
+                {
+                    Interlocked.Increment(ref metrics.serverSuccessful);
+                    Interlocked.Increment(ref metrics.serverError);
+                };
+                server.OnClose += () =>
+                {
+                    Interlocked.Increment(ref metrics.serverSuccessful);
+                    Interlocked.Decrement(ref metrics.serverActive);
+                };
+                server.OnTimeout += () =>
+                {
+                    Interlocked.Increment(ref metrics.serverTimeout);
+                    server.Terminate();
+                };
             };
             listener.Start();
 
             Thread.Sleep(1000);
 
-            for (int i = 0; i < attempts; i++)
+            List<Connection> clients = new List<Connection>();
+
+            for (int i = 0; i < metrics.attempts; i++)
             {
-                Connection client = new Connection(cendPoint);
+                Interlocked.Increment(ref metrics.clientCreated);
+                Connection client = new Connection();
+                client.OnDrain += () => Interlocked.Increment(ref metrics.datasSent);
+                client.OnClose += () =>
+                {
+                    Interlocked.Increment(ref metrics.clientSuccessful);
+                    Interlocked.Decrement(ref metrics.clientActive);
+                };
+                client.OnError += (e) =>
+                {
+                    if (client.State != TcpSocketState.Open)
+                        Interlocked.Increment(ref metrics.clientActive);
+                    Interlocked.Decrement(ref metrics.clientSuccessful);
+                    Interlocked.Increment(ref metrics.clientError);
+                };
                 client.OnOpen += () =>
                 {
-                    clients++;
-                    clientS++;
-                    client.Write(data);
+                    Interlocked.Increment(ref metrics.clientActive);
+                    client.Write(sending);
                     client.End();
                 };
-                client.OnDrain += () => datasSent++;
-                client.OnClose += () => clients--;
-                client.OnError += (e) => clientE++;
+                clients.Add(client);
+                if (metrics.clientCreated % 100 == 0)
+                    Console.WriteLine(metrics.ToString());
             }
+
+            Console.WriteLine("clients created");
+
+            for (int i = 0; i < metrics.attempts; i++)
+                clients[i].Connect(clientEndPoint);
+
+            Console.WriteLine("clients connecting");
 
             while (true)
             {
-                if (Console.KeyAvailable) break;
-                Console.WriteLine("{0}/{1} server {2}/{3}/{4}/{5} client {6} sent {7} recvd",
-                    servers, serverS, clients, clientS, clientE, clientS + clientE, datasSent, datasRecv);
+                Console.WriteLine(metrics.ToString());
+                if (IOControl.ConnectionCount == 0) break;
                 Thread.Sleep(200);
             }
             listener.Stop();
+            Console.WriteLine("done");
+            Console.ReadKey();
         }
 
         public static void WebSocketListenerTest(string[] args)
@@ -317,7 +386,7 @@ namespace Test
 
         public static void TcpSocketTest(string[] args)
         {
-            IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 1469);
+            IPEndPoint endPoint = new IPEndPoint(IPAddress.Loopback, 42069);
             TcpListener listener = new TcpListener(endPoint);
             Connection server;
             listener.OnConnection += (_server) =>
@@ -330,15 +399,15 @@ namespace Test
                 server.OnClose += () => Console.WriteLine("SERVER CLOSE");
                 server.OnData += (data) => Console.WriteLine("SERVER DATA LEN {0}", data.LongLength);
                 server.OnDrain += () => Console.WriteLine("SERVER DRAIN");
-                server.OnEnd += () => { Console.WriteLine("SERVER END"); server.End(); };
+                server.OnEnd += () => Console.WriteLine("SERVER END");
                 server.OnError += (e) => Console.WriteLine("SERVER ERROR {0}", e.ToString());
-                server.OnTimeout += () => { Console.WriteLine("SERVER TIMEOUT"); server.End(); };
+                server.OnTimeout += () => { Console.WriteLine("SERVER TIMEOUT"); server.Terminate(); };
 
                 server.Write(new byte[1000]);
                 server.End();
             };
             listener.Start();
-            Connection client = new Connection(endPoint);
+            Connection client = new Connection();
             client.OnOpen += () =>
             {
                 Console.WriteLine("CLIENT OPEN");
@@ -351,6 +420,7 @@ namespace Test
             client.OnError += (e) => Console.WriteLine("CLIENT ERROR {0}", e.ToString());
             client.OnTimeout += () => Console.WriteLine("CLIENT TIMEOUT");
             client.AllowHalfOpen = true;
+            client.Connect(endPoint);
 
             Thread.Sleep(500);
             listener.Stop();

@@ -2,7 +2,6 @@
 using System.Net;
 using CSSockets.Streams;
 using System.Net.Sockets;
-using CSSockets.Tcp.Wrap;
 
 namespace CSSockets.Tcp
 {
@@ -25,7 +24,6 @@ namespace CSSockets.Tcp
                 TcpSocketState.Open,        // SocketWrapperState.ClientReadonly
                 TcpSocketState.Open,        // SocketWrapperState.ClientWriteonly
                 TcpSocketState.Closing,     // SocketWrapperState.ClientLastWrite
-                TcpSocketState.Closed,      // SocketWrapperState.ClientClosed
                 TcpSocketState.Closed       // SocketWrapperState.Destroyed
             };
 
@@ -49,22 +47,21 @@ namespace CSSockets.Tcp
         public IPAddress RemoteAddress => Base.Remote?.Address;
 
         public SocketWrapper Base { get; private set; }
-        internal bool isComingFromServer = false;
+        internal bool internalIsComingFromServer = false;
 
         internal Connection(SocketWrapper wrapper)
         {
             Base = wrapper;
             Base.ClientOnConnect = _OnOpen;
             Base.ClientOnTimeout = _OnTimeout;
-            Base.ClientOnRecvShutdown = _OnRemoteShutdown;
+            Base.ClientOnShutdown = _OnRemoteShutdown;
             Base.ClientOnClose = _OnClose;
             Base.WrapperOnSocketError = _OnError;
         }
-        public Connection(EndPoint endPoint) : this(new SocketWrapper())
+        public Connection() : this(new SocketWrapper())
         {
             Base.WrapperBind();
             Base.WrapperAddClient(this);
-            Base.ClientConnect(endPoint);
         }
 
         private void _OnOpen() => OnOpen?.Invoke();
@@ -81,17 +78,17 @@ namespace CSSockets.Tcp
             Terminate();
         }
 
-        internal bool _WriteReadable(byte[] source) => Readable.Write(source);
-        internal byte[] _ReadWritable(ulong length) => Writable.Read(Math.Min(Writable.Buffered, length));
-        internal bool _EndReadable() => EndReadable();
-        internal bool _EndWritable() => EndWritable();
+        internal bool Internal(byte[] source) => Readable.Write(source);
+        internal byte[] InternalReadWritable(ulong length) => Writable.Read(Math.Min(Writable.Buffered, length));
+        internal bool InternalEndReadable() => EndReadable();
+        internal bool InternalEndWritable() => EndWritable();
 
-        public bool CanRead => isComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientReadonly;
+        public bool CanRead => internalIsComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientReadonly;
         public override byte[] Read() => Readable.Read();
         public override byte[] Read(ulong length) => Readable.Read(length);
         public override ulong Read(byte[] destination) => Readable.Read(destination);
 
-        public bool CanWrite => isComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientWriteonly;
+        public bool CanWrite => internalIsComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientWriteonly;
         public override bool Write(byte[] source)
         {
             if (!CanWrite) throw new InvalidOperationException("Cannot write to socket");
@@ -111,7 +108,7 @@ namespace CSSockets.Tcp
                 switch (Base.State)
                 {
                     case WrapperState.Unset:
-                        if (isComingFromServer)
+                        if (internalIsComingFromServer)
                             Base.ClientShutdown();
                         break;
                     case WrapperState.ClientOpen:
@@ -134,6 +131,17 @@ namespace CSSockets.Tcp
             {
                 if (State == TcpSocketState.Closed) return false;
                 Base.ClientTerminate();
+                return true;
+            }
+        }
+
+        public bool Connect(EndPoint endPoint)
+        {
+            lock (EndLock)
+            {
+                if (internalIsComingFromServer) return false;
+                if (Base.State > WrapperState.ClientDormant) return false;
+                Base.ClientConnect(endPoint);
                 return true;
             }
         }

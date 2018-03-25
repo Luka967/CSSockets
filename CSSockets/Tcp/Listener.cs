@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
-using CSSockets.Tcp.Wrap;
 
 namespace CSSockets.Tcp
 {

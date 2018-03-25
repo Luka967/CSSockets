@@ -3,7 +3,7 @@ using System.Net;
 using CSSockets.Streams;
 using System.Net.Sockets;
 
-namespace CSSockets.Tcp.Wrap
+namespace CSSockets.Tcp
 {
     public class SocketWrapper
     {
@@ -35,29 +35,20 @@ namespace CSSockets.Tcp.Wrap
             {
                 Callee = this,
                 Type = IOOperationType.WrapperBind,
-                AdvanceTo = WrapperState.Dormant,
-                FailAdvanceTo = WrapperState.Unset,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
         public void WrapperAddClient(Connection connection)
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                User_1 = connection,
+                Connection = connection,
                 Type = IOOperationType.WrapperAddClient,
-                AdvanceTo = WrapperState.ClientDormant,
-                FailAdvanceTo = WrapperState.Dormant,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
         public void WrapperAddServer(Listener listener)
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                User_2 = listener,
+                Listener = listener,
                 Type = IOOperationType.WrapperAddServer,
-                AdvanceTo = WrapperState.ServerWaitBind,
-                FailAdvanceTo = WrapperState.Dormant,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
 
         public void ServerLookup(EndPoint endPoint)
@@ -66,27 +57,18 @@ namespace CSSockets.Tcp.Wrap
                 Callee = this,
                 Lookup = endPoint,
                 Type = IOOperationType.ServerLookup,
-                AdvanceTo = WrapperState.ServerBound,
-                FailAdvanceTo = WrapperState.ServerWaitBind,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
         public void ServerListen()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Type = IOOperationType.ServerListen,
-                AdvanceTo = WrapperState.ServerListening,
-                FailAdvanceTo = WrapperState.ServerBound,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
         public void ServerTerminate()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Type = IOOperationType.ServerTerminate,
-                AdvanceTo = WrapperState.Destroyed,
-                FailAdvanceTo = WrapperState.ServerListening,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
 
         public void ClientConnect(EndPoint endPoint)
@@ -95,25 +77,24 @@ namespace CSSockets.Tcp.Wrap
                 Callee = this,
                 Lookup = endPoint,
                 Type = IOOperationType.ClientConnect,
-                AdvanceTo = WrapperState.ClientConnecting,
-                FailAdvanceTo = WrapperState.ClientClosed,
-                BrokenAdvanceTo = WrapperState.Destroyed
+            });
+        public void ClientOpen()
+            => BoundThread.Enqueue(new IOOperation()
+            {
+                Callee = this,
+                Type = IOOperationType.ClientOpen,
             });
         public void ClientShutdown()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Type = IOOperationType.ClientShutdown,
-                FailAdvanceTo = WrapperState.ClientClosed,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
         public void ClientTerminate()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Type = IOOperationType.ClientTerminate,
-                FailAdvanceTo = WrapperState.ClientClosed,
-                BrokenAdvanceTo = WrapperState.Destroyed
             });
 
         public SocketErrorHandler WrapperOnSocketError { get; set; }
@@ -123,7 +104,7 @@ namespace CSSockets.Tcp.Wrap
 
         public ControlHandler ClientOnConnect { get; set; }
         public ControlHandler ClientOnTimeout { get; set; }
-        public ControlHandler ClientOnRecvShutdown { get; set; }
+        public ControlHandler ClientOnShutdown { get; set; }
         public ControlHandler ClientOnClose { get; set; }
 
         public int ServerBacklog { get; set; } = SERVER_BACKLOG;

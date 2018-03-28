@@ -15,8 +15,7 @@ namespace CSSockets.Http.Reference
 
     public class ServerResponse : Response<RequestHead, ResponseHead>
     {
-        public ServerResponse(Structures.Version version, ServerConnection connection)
-            : base(version, connection) { }
+        public ServerResponse(Structures.Version version, ServerConnection connection) : base(version, connection) { }
         public ushort ResponseCode
         {
             get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.StatusCode.Value;

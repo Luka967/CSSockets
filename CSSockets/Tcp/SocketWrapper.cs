@@ -78,10 +78,12 @@ namespace CSSockets.Tcp
                 Lookup = endPoint,
                 Type = IOOperationType.ClientConnect,
             });
-        public void ClientOpen()
+        public void ClientOpen(SocketWrapper referer, Connection connection)
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
+                Referer = referer,
+                Connection = connection,
                 Type = IOOperationType.ClientOpen,
             });
         public void ClientShutdown()

@@ -259,7 +259,7 @@ namespace CSSockets.Tcp
                     switch (wrapper.State)
                     {
                         case WrapperState.ClientConnecting:
-                            ClientOpen(wrapper, true);
+                            ClientOpen(wrapper);
                             break;
                         case WrapperState.ClientOpen:
                         case WrapperState.ClientWriteonly:
@@ -349,7 +349,7 @@ namespace CSSockets.Tcp
 
                 case IOOperationType.ClientOpen:
                     if (operation.AdvanceFrom != WrapperState.ClientDormant) return Unbind(wrapper);
-                    ClientOpen(wrapper, false);
+                    ClientOpen(wrapper, operation.Referer, operation.Connection);
                     return true;
 
                 case IOOperationType.ClientConnect:
@@ -378,14 +378,9 @@ namespace CSSockets.Tcp
             {
                 SocketWrapper newWrapper = new SocketWrapper(wrapper.Socket.Accept());
                 Connection connection = new Connection(newWrapper);
-                // since the wrapper hasn't been bound to a I/O thread,
-                // a temporary override is necessary to allow queueing of operations
-                connection.internalIsComingFromServer = true;
-                wrapper.ServerOnConnection?.Invoke(connection);
-                connection.internalIsComingFromServer = false;
                 newWrapper.WrapperBind();
                 newWrapper.WrapperAddClient(connection);
-                newWrapper.ClientOpen();
+                newWrapper.ClientOpen(wrapper, connection);
             }
             while (wrapper.Socket.Poll(0, SelectMode.SelectRead));
             return true;
@@ -405,12 +400,20 @@ namespace CSSockets.Tcp
             wrapper.ClientCalledTimeout = true;
             return true;
         }
-        private bool ClientOpen(SocketWrapper wrapper, bool fireOpen)
+        private bool ClientOpen(SocketWrapper wrapper)
         {
             SucceedOperation(wrapper, WrapperState.ClientOpen);
-            if (fireOpen) wrapper.ClientOnConnect?.Invoke();
             wrapper.Local = Resolve(wrapper.Socket.LocalEndPoint);
             wrapper.Remote = Resolve(wrapper.Socket.RemoteEndPoint);
+            wrapper.ClientOnConnect?.Invoke();
+            return ClientExtendTimeout(wrapper);
+        }
+        private bool ClientOpen(SocketWrapper wrapper, SocketWrapper referer, Connection connection)
+        {
+            SucceedOperation(wrapper, WrapperState.ClientOpen);
+            wrapper.Local = Resolve(wrapper.Socket.LocalEndPoint);
+            wrapper.Remote = Resolve(wrapper.Socket.RemoteEndPoint);
+            referer.ServerOnConnection?.Invoke(connection);
             return ClientExtendTimeout(wrapper);
         }
         private bool ClientReceive(SocketWrapper wrapper)

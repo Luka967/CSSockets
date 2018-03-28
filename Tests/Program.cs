@@ -20,7 +20,7 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            TcpSocketScalabilityTest(args);
+            HttpListenerConnectionTest(args);
         }
 
         public static void RawSocketNonBlockingConnectTest(string[] args)

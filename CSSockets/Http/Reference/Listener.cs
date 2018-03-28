@@ -30,7 +30,7 @@ namespace CSSockets.Http.Reference
         {
             EndPoint = endPoint;
             Base = new Tcp.Listener(endPoint);
-            Base.OnConnection += onConnection;
+            Base.OnConnection += _onConnection;
         }
 
         public void Start() => Base.Start();
@@ -45,7 +45,7 @@ namespace CSSockets.Http.Reference
             }
         }
 
-        private void onConnection(Connection socket)
+        private void _onConnection(Connection socket)
         {
             ServerConnection connection = new ServerConnection(socket, onRequest);
             connection.OnEnd += () => { lock (sync) connections.Remove(connection); };

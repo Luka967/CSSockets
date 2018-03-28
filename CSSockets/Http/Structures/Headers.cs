@@ -22,10 +22,10 @@ namespace CSSockets.Http.Structures
               "from", "host", "if-modified-since", "if-unmodified-since", "last-modified",
               "location", "max-forwards", "proxy-authorization", "referer", "retry-after",
               "user-agent" };
-        private StringDictionary List { get; } = new StringDictionary();
-        private List<string> HeadersAdded { get; } = new List<string>();
-        public int Count => HeadersAdded.Count;
-        public string LastHeaderName => HeadersAdded.Count == 0 ? null : HeadersAdded[HeadersAdded.Count - 1];
+        private StringDictionary list { get; } = new StringDictionary();
+        private List<string> headersAdded { get; } = new List<string>();
+        public int Count => headersAdded.Count;
+        public string LastHeaderName => headersAdded.Count == 0 ? null : headersAdded[headersAdded.Count - 1];
 
         public HeaderCollection() { }
         public HeaderCollection(IEnumerable<Header> collection)
@@ -35,13 +35,13 @@ namespace CSSockets.Http.Structures
 
         public void Add(Header header) => this[header.Name] = header.Value;
 
-        public string Get(string name) => List[name.ToLower()];
-        public string GetHeaderName(int index) => HeadersAdded[index];
+        public string Get(string name) => list[name.ToLower()];
+        public string GetHeaderName(int index) => headersAdded[index];
         public IReadOnlyList<Header> AsCollection()
         {
             List<Header> list = new List<Header>();
-            for (int i = 0; i < HeadersAdded.Count; i++)
-                list.Add(new Header(HeadersAdded[i], Get(HeadersAdded[i])));
+            for (int i = 0; i < headersAdded.Count; i++)
+                list.Add(new Header(headersAdded[i], Get(headersAdded[i])));
             return new ReadOnlyCollection<Header>(list);
         }
 
@@ -52,18 +52,18 @@ namespace CSSockets.Http.Structures
             if (prevValue != null && DuplicatesIgnored.Contains(name))
                 return;
             else if (prevValue != null && !overwrite)
-                List[name] = prevValue + ", " + value.Trim();
+                list[name] = prevValue + ", " + value.Trim();
             else
             {
-                List[name] = value.Trim();
-                HeadersAdded.Add(name);
+                list[name] = value.Trim();
+                headersAdded.Add(name);
             }
         }
         public void Remove(string name)
         {
             if (Get(name) == null) return;
-            List.Remove(name);
-            HeadersAdded.Remove(name);
+            list.Remove(name);
+            headersAdded.Remove(name);
         }
 
         public IEnumerator<Header> GetEnumerator() => AsCollection().GetEnumerator();
@@ -78,14 +78,14 @@ namespace CSSockets.Http.Structures
         {
             get
             {
-                string key = HeadersAdded[index];
-                return new Header(key, List[key]);
+                string key = headersAdded[index];
+                return new Header(key, list[key]);
             }
             set
             {
                 if (value.Value == null)
-                    Remove(HeadersAdded[index]);
-                else Set(HeadersAdded[index], value.Value);
+                    Remove(headersAdded[index]);
+                else Set(headersAdded[index], value.Value);
             }
         }
     }

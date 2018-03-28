@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System.Text;
+using System.Threading;
 using CSSockets.Streams;
 using CSSockets.Http.Structures;
 using System.Collections.Concurrent;
@@ -114,10 +115,7 @@ namespace CSSockets.Http.Base
             lock (Wlock)
             {
                 if (Ended) return false;
-                string s = Stringify(head);
-                byte[] data = new byte[s.Length];
-                for (int i = 0, l = s.Length; i < l; i++) data[i] = (byte)s[i];
-                return Readable.Write(data);
+                return Readable.Write(Encoding.ASCII.GetBytes(Stringify(head)));
             }
         }
     }

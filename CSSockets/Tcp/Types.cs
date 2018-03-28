@@ -46,6 +46,7 @@ namespace CSSockets.Tcp
     {
         public Socket Socket => Callee.Socket;
         public SocketWrapper Callee { get; set; }
+        public SocketWrapper Referer { get; set; }
         public IOOperationType Type { get; set; }
         public EndPoint Lookup { get; set; }
         public Connection Connection { get; set; }

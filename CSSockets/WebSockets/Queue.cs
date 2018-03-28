@@ -1,62 +1,64 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using System.Collections.Generic;
 
 namespace CSSockets.WebSockets
 {
     internal class Queue<T>
     {
-        private List<T> List { get; }
-        private object GetterLock { get; }
-        private AutoResetEvent GetterBlock { get; }
+        private readonly List<T> List = new List<T>();
+        private readonly object getLock = new object();
+        private readonly object putLock = new object();
+        private readonly AutoResetEvent getBlock = new AutoResetEvent(false);
         public int Count => List.Count;
         public bool IsEmpty => List.Count == 0;
-        public bool Ended { get; private set; }
-        private void ThrowIfEnded() { if (Ended) throw new ObjectDisposedException("This queue has already ended.", innerException: null); }
+        public bool Ended { get; private set; } = false;
 
-        public Queue()
+        public Queue() { }
+        public Queue(IEnumerable<T> starting)
         {
-            List = new List<T>();
-            GetterLock = new object();
-            GetterBlock = new AutoResetEvent(false);
+            lock (putLock) List.AddRange(starting);
         }
-        public Queue(IEnumerable<T> starting) : this() => List.AddRange(starting);
 
-        public void Enqueue(T item)
+        public bool Enqueue(T item)
         {
-            ThrowIfEnded();
-            List.Add(item);
-            GetterBlock.Set();
+            lock (putLock)
+            {
+                if (Ended) return false;
+                List.Add(item);
+                getBlock.Set();
+                return true;
+            }
         }
 
         public bool Dequeue(out T item)
         {
-            ThrowIfEnded();
-            bool got = false;
-            item = default(T);
-            GetterBlock.WaitOne();
-            lock (GetterLock)
+            lock (getLock)
             {
+                item = default(T);
+                if (Ended) return false;
+                bool got = false;
+                getBlock.WaitOne();
                 if (!Ended)
                 {
                     item = List[0];
                     List.RemoveAt(0);
                     if (List.Count == 0)
-                        GetterBlock.Reset();
+                        getBlock.Reset();
                     got = true;
                 }
+                return got;
             }
-            return got;
         }
 
-        public void End()
+        public bool End()
         {
-            ThrowIfEnded();
-            lock (GetterLock)
+            lock (getLock)
             {
+                if (Ended) return false;
                 Ended = true;
-                GetterBlock.Set();
-                GetterBlock.Dispose();
+                getBlock.Set();
+                getBlock.Dispose();
+                return true;
             }
         }
     }

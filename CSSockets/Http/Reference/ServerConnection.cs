@@ -1,5 +1,6 @@
 ﻿using System;
 using CSSockets.Tcp;
+using CSSockets.Streams;
 using CSSockets.Http.Base;
 
 namespace CSSockets.Http.Reference
@@ -39,11 +40,11 @@ namespace CSSockets.Http.Reference
             reqc++;
             hasReqHead = hasResHead = hasReqBody = hasResBody = false;
             HeadParser.OnOutput += OnReqHead;
-            HeadParser.Pipe(BodyParser);
+            HeadParser.Pipe(HeadParser);
             HeadParser.Unpipe();
-            BodyParser.Excess.Pipe(HeadParser);
+            BodyParser.Excess.Pipe(!hasReqHead ? HeadParser as IWritable : BodyParser as IWritable);
             BodyParser.Excess.Unpipe();
-            Base.Pipe(HeadParser);
+            Base.Pipe(!hasReqHead ? HeadParser as IWritable : BodyParser as IWritable);
         }
         private void OnReqHead(RequestHead head)
         {
@@ -91,6 +92,14 @@ namespace CSSockets.Http.Reference
 
             BodySerializer.Pipe(Base);
             CurrentMessage.Value.res.buffer.Pipe(BodySerializer);
+            return true;
+        }
+        public bool SendContinueHead(ResponseHead head)
+        {
+            if (!hasReqHead) return false;
+            HeadSerializer.Write(head);
+            HeadSerializer.Pipe(Base);
+            HeadSerializer.Unpipe();
             return true;
         }
         private void finishResponse() => FinishResponse(false);

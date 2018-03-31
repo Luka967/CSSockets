@@ -12,7 +12,7 @@ namespace CSSockets.WebSockets
     // Pong = 10
     public class Frame
     {
-        private static RandomNumberGenerator Rng { get; } = Rng = RandomNumberGenerator.Create();
+        private static readonly RandomNumberGenerator rng = rng = RandomNumberGenerator.Create();
 
         public byte Opcode { get; set; }
         public byte[] Mask { get; set; }
@@ -35,7 +35,7 @@ namespace CSSockets.WebSockets
             RSV3 = rsv3;
             if (!masked) return;
             Mask = new byte[4];
-            Rng.GetBytes(Mask);
+            rng.GetBytes(Mask);
         }
 
         public void Serialize(IWritable to)

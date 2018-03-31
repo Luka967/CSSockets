@@ -6,31 +6,32 @@ namespace CSSockets.Tcp
 {
     public class Listener
     {
-        private readonly object _sync = new object();
-        public SocketWrapper Base { get; private set; }
+        private readonly object sync = new object();
+        public SocketWrapper _base = null;
+        public SocketWrapper Base => (_base?.State == WrapperState.Destroyed ? Create() : _base) ?? Create();
 
         private SocketWrapper Create()
         {
-            IPEndPoint endPoint = Base?.Local;
-            Base = new SocketWrapper();
-            Base.WrapperBind();
-            Base.WrapperAddServer(this);
-            Base.ServerExclusive = Exclusive;
-            Base.ServerBacklog = Backlog;
-            Base.WrapperOnSocketError = _OnError;
-            Base.ServerOnConnection = _OnConnection;
-            if (endPoint != null) Base.ServerLookup(endPoint);
-            return Base;
+            IPEndPoint endPoint = _base?.Local;
+            _base = new SocketWrapper();
+            _base.WrapperBind();
+            _base.WrapperAddServer(this);
+            _base.ServerExclusive = Exclusive;
+            _base.ServerBacklog = Backlog;
+            _base.WrapperOnSocketError = _OnError;
+            _base.ServerOnConnection = _OnConnection;
+            if (endPoint != null) _base.ServerLookup(endPoint);
+            return _base;
         }
 
         public bool Exclusive { get; set; } = SocketWrapper.SERVER_EXCLUSIVE;
         public int Backlog { get; set; } = SocketWrapper.SERVER_BACKLOG;
-        public bool Bound => Base.State >= WrapperState.ServerBound;
-        public bool Listening => Base.State == WrapperState.ServerListening;
+        public bool Bound => _base.State >= WrapperState.ServerBound;
+        public bool Listening => _base.State == WrapperState.ServerListening;
         public EndPoint BindEndPoint
         {
-            get => Base.Local;
-            set => Base.ServerLookup(value ?? throw new ArgumentNullException(nameof(value)));
+            get => _base.Local;
+            set => _base.ServerLookup(value ?? throw new ArgumentNullException(nameof(value)));
         }
 
         public event ConnectionHandler OnConnection;
@@ -46,15 +47,15 @@ namespace CSSockets.Tcp
 
         public void Start()
         {
-            lock (_sync) Base.ServerListen();
+            lock (sync) _base.ServerListen();
         }
         public void Stop()
         {
-            lock (_sync) Base.ServerTerminate();
+            lock (sync) _base.ServerTerminate();
         }
         public void Reset()
         {
-            lock (_sync) Create();
+            lock (sync) Create();
         }
     }
 }

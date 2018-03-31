@@ -28,7 +28,7 @@ namespace CSSockets.Tcp
         Destroyed = 11              // nothing available
     }
 
-    public enum IOOperationType : byte
+    public enum OperationType : byte
     {
         Noop = 0,
         WrapperBind = 1,
@@ -47,7 +47,7 @@ namespace CSSockets.Tcp
         public Socket Socket => Callee.Socket;
         public SocketWrapper Callee { get; set; }
         public SocketWrapper Referer { get; set; }
-        public IOOperationType Type { get; set; }
+        public OperationType Type { get; set; }
         public EndPoint Lookup { get; set; }
         public Connection Connection { get; set; }
         public Listener Listener { get; set; }

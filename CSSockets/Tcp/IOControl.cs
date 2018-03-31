@@ -304,33 +304,33 @@ namespace CSSockets.Tcp
             SocketError code = SocketError.Success;
             switch (operation.Type)
             {
-                case IOOperationType.Noop:
+                case OperationType.Noop:
                     return SucceedOperation(wrapper);
 
-                case IOOperationType.WrapperBind:
+                case OperationType.WrapperBind:
                     if (operation.AdvanceFrom != WrapperState.Unset) return Unbind(wrapper);
                     return Bind(wrapper)
                         ? SucceedOperation(wrapper, WrapperState.Dormant)
                         : FailOperation(wrapper, WrapperState.Unset);
 
-                case IOOperationType.WrapperAddServer:
+                case OperationType.WrapperAddServer:
                     return Bind(operation.Listener, wrapper)
                         ? SucceedOperation(wrapper, WrapperState.ServerDormant)
                         : FailOperation(wrapper, WrapperState.Dormant);
 
-                case IOOperationType.WrapperAddClient:
+                case OperationType.WrapperAddClient:
                     if (operation.AdvanceFrom != WrapperState.Dormant) return Unbind(wrapper);
                     return Bind(operation.Connection, wrapper)
                         ? SucceedOperation(wrapper, WrapperState.ClientDormant)
                         : FailOperation(wrapper, WrapperState.Dormant);
 
-                case IOOperationType.ServerLookup:
+                case OperationType.ServerLookup:
                     if (operation.AdvanceFrom != WrapperState.ServerDormant) return Unbind(wrapper);
                     wrapper.Local = endPoint = Resolve(operation.Lookup);
                     if (endPoint == null) return FailOperation(wrapper, WrapperState.ServerDormant);
                     return SucceedOperation(wrapper, WrapperState.ServerBound);
 
-                case IOOperationType.ServerListen:
+                case OperationType.ServerListen:
                     if (operation.AdvanceFrom == WrapperState.ServerDormant) return FailOperation(wrapper, WrapperState.ServerDormant);
                     else if (operation.AdvanceFrom != WrapperState.ServerBound) return Unbind(wrapper);
                     try
@@ -344,15 +344,15 @@ namespace CSSockets.Tcp
                         ? Unbind(wrapper, code)
                         : SucceedOperation(wrapper, WrapperState.ServerListening);
 
-                case IOOperationType.ServerTerminate:
+                case OperationType.ServerTerminate:
                     return Unbind(wrapper);
 
-                case IOOperationType.ClientOpen:
+                case OperationType.ClientOpen:
                     if (operation.AdvanceFrom != WrapperState.ClientDormant) return Unbind(wrapper);
                     ClientOpen(wrapper, operation.Referer, operation.Connection);
                     return true;
 
-                case IOOperationType.ClientConnect:
+                case OperationType.ClientConnect:
                     if (operation.AdvanceFrom != WrapperState.ClientDormant) return Unbind(wrapper);
                     wrapper.Remote = endPoint = Resolve(operation.Lookup);
                     if (endPoint == null) return Unbind(wrapper, SocketError.NetworkUnreachable);
@@ -362,10 +362,10 @@ namespace CSSockets.Tcp
                         ? Unbind(wrapper, code)
                         : SucceedOperation(wrapper, WrapperState.ClientConnecting) && ClientExtendTimeout(wrapper);
 
-                case IOOperationType.ClientShutdown:
+                case OperationType.ClientShutdown:
                     return ClientShutdown(wrapper, false, true);
 
-                case IOOperationType.ClientTerminate:
+                case OperationType.ClientTerminate:
                     return Unbind(wrapper);
 
                 default: throw new Exception();

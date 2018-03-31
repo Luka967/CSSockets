@@ -34,21 +34,21 @@ namespace CSSockets.Tcp
             => (BoundThread = IOControl.GetBest()).Enqueue(new IOOperation()
             {
                 Callee = this,
-                Type = IOOperationType.WrapperBind,
+                Type = OperationType.WrapperBind,
             });
         public void WrapperAddClient(Connection connection)
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Connection = connection,
-                Type = IOOperationType.WrapperAddClient,
+                Type = OperationType.WrapperAddClient,
             });
         public void WrapperAddServer(Listener listener)
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
                 Listener = listener,
-                Type = IOOperationType.WrapperAddServer,
+                Type = OperationType.WrapperAddServer,
             });
 
         public void ServerLookup(EndPoint endPoint)
@@ -56,19 +56,19 @@ namespace CSSockets.Tcp
             {
                 Callee = this,
                 Lookup = endPoint,
-                Type = IOOperationType.ServerLookup,
+                Type = OperationType.ServerLookup,
             });
         public void ServerListen()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                Type = IOOperationType.ServerListen,
+                Type = OperationType.ServerListen,
             });
         public void ServerTerminate()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                Type = IOOperationType.ServerTerminate,
+                Type = OperationType.ServerTerminate,
             });
 
         public void ClientConnect(EndPoint endPoint)
@@ -76,7 +76,7 @@ namespace CSSockets.Tcp
             {
                 Callee = this,
                 Lookup = endPoint,
-                Type = IOOperationType.ClientConnect,
+                Type = OperationType.ClientConnect,
             });
         public void ClientOpen(SocketWrapper referer, Connection connection)
             => BoundThread.Enqueue(new IOOperation()
@@ -84,19 +84,19 @@ namespace CSSockets.Tcp
                 Callee = this,
                 Referer = referer,
                 Connection = connection,
-                Type = IOOperationType.ClientOpen,
+                Type = OperationType.ClientOpen,
             });
         public void ClientShutdown()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                Type = IOOperationType.ClientShutdown,
+                Type = OperationType.ClientShutdown,
             });
         public void ClientTerminate()
             => BoundThread.Enqueue(new IOOperation()
             {
                 Callee = this,
-                Type = IOOperationType.ClientTerminate,
+                Type = OperationType.ClientTerminate,
             });
 
         public SocketErrorHandler WrapperOnSocketError { get; set; }

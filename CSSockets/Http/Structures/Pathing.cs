@@ -47,17 +47,13 @@ namespace CSSockets.Http.Structures
                 result = temp;
                 return true;
             }
-            if (!s.StartsWith("?"))
-                // doesn't start with ?
-                return false;
+            if (!s.StartsWith("?")) return false;
             string[] split = s.Substring(1).Split("&");
             for (int i = 0; i < split.Length; i++)
             {
                 string queryToken = split[i];
                 string[] queryTokenSplit = queryToken.Split("=");
-                if (queryTokenSplit.Length != 2)
-                    // invalid query token
-                    return false;
+                if (queryTokenSplit.Length != 2) return false;
                 temp.Set(queryTokenSplit[0], queryTokenSplit[1]);
             }
             result = temp;
@@ -251,5 +247,8 @@ namespace CSSockets.Http.Structures
             (Path.ToString() ?? throw new InvalidOperationException("Path in HttpQuery is null"))
             + (Search ?? "")
             + (Hash == null ? "" : "#" + Hash);
+
+        public static implicit operator Query(string value) => Parse(value);
+        public static implicit operator string(Query value) => value.ToString();
     }
 }

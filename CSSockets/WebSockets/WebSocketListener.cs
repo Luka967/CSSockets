@@ -7,68 +7,41 @@ using System.Security.Cryptography;
 
 namespace CSSockets.WebSockets
 {
-    public delegate bool ClientVerifierHandler(RequestHead head);
+    public delegate bool ClientVerifierHandler(ClientRequest req);
     public delegate void ConnectionHandler(WebSocket newConnection);
     public class WebSocketListener
     {
         public Listener Base { get; }
         public bool Listening => Base.Listening;
 
-        public ClientVerifierHandler ClientVerifier { get; set; }
+        public ClientVerifierHandler ClientVerifier { get; set; } = null;
         public event ConnectionHandler OnConnection;
 
-        public WebSocketListener(EndPoint listenEndpoint) => Base = new Listener(listenEndpoint) { OnRequest = _onRequest };
+        public WebSocketListener(EndPoint listenEndpoint) => Base = new Listener(listenEndpoint) { OnRequest = _upgrade };
+        public WebSocketListener(Listener listener) => Base = listener;
 
-        private void _onRequest(ClientRequest req, ServerResponse res)
+        private void _upgrade(ClientRequest req, ServerResponse res) => Upgrade(req, res);
+        public bool Upgrade(ClientRequest req, ServerResponse res)
         {
             if (req.Version != "HTTP/1.1")
-            {
-                // bad http version
-                DropRequest(res, 505, "HTTP Version Not Supported", "Use HTTP/1.1");
-                return;
-            }
+                return dropRequest(res, 505, "HTTP Version Not Supported", "Use HTTP/1.1");
             if (req.Method != "GET")
-            {
-                // bad http version
-                DropRequest(res, 405, "Method Not Allowed", "Use GET");
-                return;
-            }
+                return dropRequest(res, 405, "Method Not Allowed", "Use GET");
             if (req["Transfer-Encoding"] != null || req["Content-Encoding"] != null || req["Content-Length"] != null)
-            {
-                // has body
-                DropRequest(res, 400, "Bad Request", "No body allowed");
-                return;
-            }
+                return dropRequest(res, 400, "Bad Request", "No body allowed");
+
             if (req["Connection"] != "Upgrade")
-            {
-                // not upgrading
-                DropRequest(res, 426, "Upgrade Required", "Upgrade required");
-                return;
-            }
+                return dropRequest(res, 426, "Upgrade Required", "Upgrade required");
             if (req["Upgrade"] != "websocket")
-            {
-                // not upgrading to websocket
-                DropRequest(res, 400, "Bad Request", "Upgrade to websocket");
-                return;
-            }
+                return dropRequest(res, 400, "Bad Request", "Upgrade to websocket");
+
             if (req["Sec-WebSocket-Version"] != "13")
-            {
-                // bad websocket version
-                DropRequest(res, 400, "Bad Request", "Unsupported WebSocket version", new Header("Sec-WebSocket-Version", "13"));
-                return;
-            }
+                return dropRequest(res, 400, "Bad Request", "Unsupported WebSocket version", new Header("Sec-WebSocket-Version", "13"));
             if (req["Sec-WebSocket-Key"] == null)
-            {
-                // Sec-WebSocket-Key not given
-                DropRequest(res, 400, "Bad Request", "Sec-WebSocket-Key not given");
-                return;
-            }
-            if (ClientVerifier != null && !ClientVerifier(req.Head))
-            {
-                // rejected
-                DropRequest(res, 403, "Forbidden", "");
-                return;
-            }
+                return dropRequest(res, 400, "Bad Request", "Sec-WebSocket-Key not given");
+
+            if (!ClientVerifier?.Invoke(req) ?? false)
+                return dropRequest(res, 403, "Forbidden", "");
 
             SHA1 hasher = SHA1.Create();
             byte[] result = hasher.ComputeHash(Encoding.UTF8.GetBytes(req["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
@@ -77,7 +50,7 @@ namespace CSSockets.WebSockets
 
             res.ResponseCode = 101;
             res.ResponseDescription = "Switching Protocols";
-            res["Connection"] = "upgrade";
+            res["Connection"] = "Upgrade";
             res["Upgrade"] = "websocket";
             res["Sec-WebSocket-Version"] = "13";
             res["Sec-WebSocket-Accept"] = str;
@@ -86,26 +59,20 @@ namespace CSSockets.WebSockets
             ServerWebSocket ws = new ServerWebSocket(req.Connection.Base, req.Head);
             OnConnection?.Invoke(ws);
             ws.WriteTrail(trail);
+            return true;
         }
 
-        private void DropRequest(ServerResponse res, ushort code, string reason, string body, params Header[] otherHeaders)
+        private bool dropRequest(ServerResponse res, ushort code, string reason, string body, params Header[] otherHeaders)
         {
             res.ResponseCode = code;
             res.ResponseDescription = reason;
             res["Content-Length"] = body.Length.ToString();
             res["Connection"] = "close";
-            foreach (Header h in otherHeaders) res[h.Name] = h.Value;
+            foreach (Header header in otherHeaders) res[header.Name] = header.Value;
             res.Write(body);
             res.End();
             res.Connection.End();
-        }
-
-        private static string ToBase16String(byte[] array)
-        {
-            string s = "";
-            for (long i = 0; i < array.LongLength; i++)
-                s += array[i].ToString("X2").ToLowerInvariant();
-            return s;
+            return false;
         }
 
         public void Start() => Base.Start();

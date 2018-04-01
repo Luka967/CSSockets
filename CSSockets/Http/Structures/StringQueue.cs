@@ -4,7 +4,7 @@ using System.Collections.Concurrent;
 
 namespace CSSockets.Http.Structures
 {
-    sealed public class StringQueue
+    public sealed class StringQueue
     {
         private ConcurrentQueue<StringBuilder> Queue { get; } = new ConcurrentQueue<StringBuilder>();
         private StringBuilder Last { get; set; } = null;

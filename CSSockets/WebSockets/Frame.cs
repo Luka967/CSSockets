@@ -22,7 +22,7 @@ namespace CSSockets.WebSockets
         public bool RSV3 { get; set; }
         public bool FIN { get; set; }
         public bool Masked => Mask != null;
-        public ulong PayloadLength => (ulong)Payload.LongLength;
+        public ulong PayloadLength => (ulong?)Payload?.LongLength ?? 0u;
 
         public Frame() { }
         public Frame(bool fin, byte opcode, bool masked, byte[] payload, bool rsv1 = false, bool rsv2 = false, bool rsv3 = false)
@@ -64,6 +64,7 @@ namespace CSSockets.WebSockets
                     WriteByte(to, (byte)(PayloadLength % 256u));
                     break;
             }
+            if (Payload == null) return;
             if (Masked)
             {
                 to.Write(Mask);

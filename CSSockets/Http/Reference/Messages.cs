@@ -37,8 +37,10 @@ namespace CSSockets.Http.Reference
         {
             if (!base.End() || !Connection.FinishResponse()) return null;
             if (!Connection.Detach()) return null;
-            byte[] a = Connection.HeadParser.Read();
-            byte[] b = Connection.BodyParser.Excess.Read();
+            byte[] a = new byte[Connection.HeadParser.Buffered];
+            byte[] b = new byte[Connection.BodyParser.ExcessBuffered];
+            Connection.HeadParser.Read(a);
+            Connection.BodyParser.Excess.Read(b);
             byte[] c = new byte[a.LongLength + b.LongLength];
             PrimitiveBuffer.Copy(a, 0, c, 0, (ulong)a.LongLength);
             PrimitiveBuffer.Copy(b, (ulong)a.LongLength, c, 0, (ulong)b.LongLength);

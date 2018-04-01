@@ -20,28 +20,88 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            HttpListenerConnectionTest(args);
+            WebSocketStreamTest(args);
         }
 
-        public static void RawSocketNonBlockingConnectTest(string[] args)
+        public static void WebSocketStreamTest(string[] args)
         {
-            IPEndPoint endPoint = new IPEndPoint(IPAddress.Loopback, 420);
-            Socket listener = new Socket(SocketType.Stream, ProtocolType.Tcp);
-            listener.Blocking = false;
-            listener.Bind(endPoint);
-            listener.Listen(511);
-            Socket client = new Socket(SocketType.Stream, ProtocolType.Tcp);
-            client.Blocking = false;
-            try { client.Connect(endPoint); }
-            catch (SocketException ex) { Console.WriteLine(ex); }
-            while (!listener.Poll(1000, SelectMode.SelectRead)) ;
-            Socket server = listener.Accept();
-            server.Blocking = false;
-            server.Send(new byte[] { 1, 2, 3, 4, 5 });
-            while (!client.Poll(1000, SelectMode.SelectRead)) ;
-            byte[] data = new byte[5];
-            client.Receive(data);
-            Console.WriteLine(data.ByteArrayToString());
+            WebSocketListener listener = new WebSocketListener(new IPEndPoint(IPAddress.Any, 420));
+            listener.OnConnection += (ws) =>
+            {
+                new Thread(() =>
+                {
+                    Thread.Sleep(1000);
+                    WebSocket.Streamer streamer = ws.Stream();
+                    //streamer.Cork();
+                    StreamWriter writer = new StreamWriter(streamer);
+                    writer.WriteFloat32LE(float.NaN);
+                    writer.WriteFloat32LE(2);
+                    writer.WriteFloat32LE(8);
+                    writer.WriteFloat32LE(25);
+                    writer.WriteFloat32LE(-9825);
+                    writer.WriteFloat32LE(float.NegativeInfinity);
+                    streamer.End();
+                }).Start();
+            };
+            listener.Start();
+            Console.ReadKey();
+            listener.Stop();
+        }
+
+        public static void StreamReaderWriterTest(string[] args)
+        {
+            MemoryDuplex duplex = new MemoryDuplex();
+            StreamReader reader = new StreamReader(duplex);
+            StreamWriter writer = new StreamWriter(duplex);
+
+            // reading
+            // little endian
+            duplex.Write(BitConverter.GetBytes(10));
+            duplex.Write(BitConverter.GetBytes(10u));
+            duplex.Write(BitConverter.GetBytes(10f));
+            duplex.Write(BitConverter.GetBytes(10d));
+            duplex.Write(UTF8.GetBytes("Test"));
+            Console.WriteLine(reader.ReadInt32LE());
+            Console.WriteLine(reader.ReadUInt32LE());
+            Console.WriteLine(reader.ReadFloat32LE());
+            Console.WriteLine(reader.ReadFloat64LE());
+            Console.WriteLine(reader.ReadStringUTF8ZT());
+
+            // big endian
+            duplex.Write(BitConverter.GetBytes(10));
+            duplex.Write(BitConverter.GetBytes(10u));
+            duplex.Write(BitConverter.GetBytes(10f));
+            duplex.Write(BitConverter.GetBytes(10d));
+            duplex.Write(BigEndianUnicode.GetBytes("Test12345"));
+            duplex.Write(BitConverter.GetBytes((ushort)0));
+            byte[] reversed = duplex.Read();
+            Array.Reverse(reversed, 0, 4);
+            Array.Reverse(reversed, 4, 4);
+            Array.Reverse(reversed, 8, 4);
+            Array.Reverse(reversed, 12, 8);
+            duplex.Write(reversed);
+            Console.WriteLine(reader.ReadInt32BE());
+            Console.WriteLine(reader.ReadUInt32BE());
+            Console.WriteLine(reader.ReadFloat32BE());
+            Console.WriteLine(reader.ReadFloat64BE());
+            Console.WriteLine(reader.ReadStringUnicodeBEZT());
+
+            // reading & writing
+            // little endian
+            writer.WriteUInt8(100);
+            writer.WriteInt8(-100);
+            writer.WriteUInt16LE(100);
+            writer.WriteUInt16BE(100);
+            writer.WriteIntBE(-100, 24);
+            writer.WriteStringUnicodeBE("One two three");
+            writer.WriteUInt16BE(0);
+            Console.WriteLine(reader.ReadUInt8());
+            Console.WriteLine(reader.ReadInt8());
+            Console.WriteLine(reader.ReadUInt16LE());
+            Console.WriteLine(reader.ReadUInt16BE());
+            Console.WriteLine(reader.ReadIntBE(24));
+            Console.WriteLine(reader.ReadStringUnicodeBEZT());
+            duplex.End();
             Console.ReadKey();
         }
 
@@ -361,9 +421,9 @@ namespace Test
         public static unsafe void CopyBenchmark(string[] args)
         {
             Random rand = new Random();
-            byte[] sample = new byte[4000];
+            byte[] sample = new byte[400];
             rand.NextBytes(sample);
-            int sampleCount = 100000;
+            int sampleCount = 1000000;
             Console.WriteLine("Sample size: {0}", sample.LongLength);
             Console.WriteLine("Sample count: {0}" + Environment.NewLine, sampleCount);
             CopyBenchmarkSample(sample, "Array.Copy", (data) =>
@@ -380,6 +440,12 @@ namespace Test
             {
                 byte[] identical = new byte[data.LongLength];
                 PrimitiveBuffer.Copy(data, 0, identical, 0, data.Length);
+            }, sampleCount);
+            CopyBenchmarkSample(sample, "Buffer.MemoryCopy", (data) =>
+            {
+                byte[] identical = new byte[data.LongLength];
+                fixed (void* samplep = sample, identicalp = identical)
+                    Buffer.MemoryCopy(samplep, identicalp, data.LongLength, data.LongLength);
             }, sampleCount);
             Console.ReadKey();
         }

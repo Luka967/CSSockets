@@ -19,7 +19,7 @@ namespace CSSockets.Streams
         protected readonly object Rlock = new object();
         protected readonly object Wlock = new object();
         protected ulong? Rtarget { get; private set; } = null;
-        protected readonly AutoResetEvent Rwait = new AutoResetEvent(true);
+        protected readonly AutoResetEvent Rwait = new AutoResetEvent(false);
         protected readonly ManualResetEvent Rpause = new ManualResetEvent(true);
 
         private bool Rpaused = false;
@@ -165,7 +165,7 @@ namespace CSSockets.Streams
                 {
                     ThrowIfEnded();
                     ulong length = Math.Min(Buffered, (ulong)destination.LongLength);
-                    buffer.Read(destination);
+                    if (Buffered > 0) buffer.Read(destination, length);
                     return length;
                 }
         }
@@ -176,7 +176,7 @@ namespace CSSockets.Streams
             {
                 if (Ended) return false;
                 buffer.Write(source);
-                if (Rtarget == null && Rtarget < Buffered) return true;
+                if (Rtarget == null || Rtarget < Buffered) return true;
                 Rwait.Set();
                 return true;
             }

@@ -5,7 +5,7 @@ using System.IO.Compression;
 
 namespace CSSockets.Http.Reference
 {
-    sealed public class BodySerializer : UnifiedDuplex
+    public sealed class BodySerializer : UnifiedDuplex
     {
         private const string CRLF = "\r\n";
         private static readonly byte[] CRLF_BYTES = Encoding.ASCII.GetBytes(CRLF);

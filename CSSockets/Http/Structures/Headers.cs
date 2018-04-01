@@ -15,7 +15,7 @@ namespace CSSockets.Http.Structures
             Value = value;
         }
     }
-    sealed public class HeaderCollection : IEnumerable<Header>
+    public sealed class HeaderCollection : IEnumerable<Header>
     {
         public static HashSet<string> DuplicatesIgnored = new HashSet<string>()
             { "age", "authorization", "content-length", "content-type", "etag", "expires",

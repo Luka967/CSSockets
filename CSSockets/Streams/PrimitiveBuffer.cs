@@ -30,10 +30,10 @@ namespace CSSockets.Streams
             Capacity = targetCap;
         }
         public unsafe byte[] Read(ulong length) => Read(new byte[length]);
-        public unsafe byte[] Read(byte[] ret)
+        public unsafe byte[] Read(byte[] ret) => Read(ret, (ulong)ret.LongLength);
+        public unsafe byte[] Read(byte[] ret, ulong length)
         {
             if (ret == null) throw new ArgumentNullException(nameof(ret));
-            ulong length = (ulong)ret.LongLength;
             if (length > Length) throw new ArgumentOutOfRangeException(nameof(length));
             fixed (byte* src = Buffer, dst = ret)
             {
@@ -54,23 +54,10 @@ namespace CSSockets.Streams
                 Copy(src, 0, dst, start, len);
         }
 
-        // windows
-        [DllImport("msvcrt.dll", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl, SetLastError = false), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* WMEMCPY(void* dest, void* src, ulong count);
-        [DllImport("msvcrt.dll", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl, SetLastError = false), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* WMEMCPY(void* dest, void* src, int count);
-
-        // *nix
-        [DllImport("libc", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* UMEMCPY(void* dest, void* src, ulong count);
-        [DllImport("libc", EntryPoint = "memcpy", CallingConvention = CallingConvention.Cdecl), SuppressUnmanagedCodeSecurity]
-        private static unsafe extern void* UMEMCPY(void* dest, void* src, int count);
-
-        public static bool IS_WINDOWS = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        private static unsafe void* MEMCPY(void* dest, void* src, ulong count)
-            => IS_WINDOWS ? WMEMCPY(dest, src, count) : UMEMCPY(dest, src, count);
-        private static unsafe void* MEMCPY(void* dest, void* src, int count)
-            => IS_WINDOWS ? WMEMCPY(dest, src, count) : UMEMCPY(dest, src, count);
+        private static unsafe void MEMCPY(void* dest, void* src, ulong count)
+            => System.Buffer.MemoryCopy(src, dest, count, count);
+        private static unsafe void MEMCPY(void* dest, void* src, int count)
+            => System.Buffer.MemoryCopy(src, dest, count, count);
 
         public static unsafe byte[] Slice(byte[] source, ulong start, ulong end)
         {

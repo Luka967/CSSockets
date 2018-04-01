@@ -5,7 +5,7 @@ using System.Globalization;
 
 namespace CSSockets.Http.Reference
 {
-    sealed public class BodyParser : UnifiedDuplex
+    public sealed class BodyParser : UnifiedDuplex
     {
         private enum ParserState : sbyte
         {
@@ -24,12 +24,13 @@ namespace CSSockets.Http.Reference
 
         private readonly MemoryDuplex excess = new MemoryDuplex();
         public IReadable Excess => excess;
+        public ulong ExcessBuffered => excess.Buffered;
 
         private UnifiedDuplex transform;
         private BodyType? type = null;
         private ParserState state = ParserState.Dormant;
         private StringQueue Squeue = null;
-        private bool Malformed = false;
+        private bool malformed = false;
         private ulong? chunkLen = null;
         private ulong? chunkIndex = null;
 
@@ -101,7 +102,7 @@ namespace CSSockets.Http.Reference
                         case ParserState.RawRead:
                             len = ContentLength == null ? sourceLen - i : Math.Min(sourceLen - i, ContentLength.Value - CurrentContentLength.Value);
                             if (!transform.Write(source, i, i + len))
-                                return (Malformed = true) && !End();
+                                return (malformed = true) && !End();
                             i += len; CurrentContentLength += len;
                             if (transform.Buffered > 0) Bhandle(transform.Read());
                             if (ContentLength == null || CurrentContentLength < ContentLength) break;
@@ -114,21 +115,21 @@ namespace CSSockets.Http.Reference
                             else
                             {
                                 if (!ulong.TryParse(Squeue.Next(), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong result))
-                                    return (Malformed = true) && !End();
+                                    return (malformed = true) && !End();
                                 chunkLen = result;
                                 state = ParserState.Chunked_LenLf;
                             }
                             break;
                         case ParserState.Chunked_LenLf:
                             c = (char)source[i++];
-                            if (c != LF) return (Malformed = true) && !End();
+                            if (c != LF) return (malformed = true) && !End();
                             if (chunkLen == 0) state = ParserState.Chunked_Trailer;
                             else state = ParserState.Chunked_ChunkData;
                             break;
                         case ParserState.Chunked_ChunkData:
                             len = Math.Min(sourceLen - i, chunkLen.Value - chunkIndex.Value);
                             if (!transform.Write(source, i, i + len))
-                                return (Malformed = true) && !End();
+                                return (malformed = true) && !End();
                             i += len; CurrentContentLength += len; chunkIndex += len;
                             if (transform.Buffered > 0) Bhandle(transform.Read());
                             if (chunkLen == chunkIndex)
@@ -136,12 +137,12 @@ namespace CSSockets.Http.Reference
                             break;
                         case ParserState.Chunked_ChunkCr:
                             c = (char)source[i++];
-                            if (c != CR) return (Malformed = true) && !End();
+                            if (c != CR) return (malformed = true) && !End();
                             state = ParserState.Chunked_ChunkLf;
                             break;
                         case ParserState.Chunked_ChunkLf:
                             c = (char)source[i++];
-                            if (c != LF) return (Malformed = true) && !End();
+                            if (c != LF) return (malformed = true) && !End();
                             state = ParserState.Chunked_Length;
                             chunkLen = chunkIndex = 0;
                             Squeue.New();
@@ -157,7 +158,7 @@ namespace CSSockets.Http.Reference
                             break;
                         case ParserState.Chunked_Lf:
                             c = (char)source[i++];
-                            if (c != LF) return (Malformed = true) && !End();
+                            if (c != LF) return (malformed = true) && !End();
                             state = ParserState.Dormant;
                             Reset();
                             break;
@@ -196,7 +197,7 @@ namespace CSSockets.Http.Reference
                 {
                     if (base.End())
                     {
-                        if (Malformed) FireFail();
+                        if (malformed) FireFail();
                         if (type != null && !Reset()) return false;
                         return excess.End();
                     }

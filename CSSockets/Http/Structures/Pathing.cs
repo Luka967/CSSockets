@@ -13,7 +13,7 @@ namespace CSSockets.Http.Structures
             return s.Length == 0 ? s : s.Remove(s.Length - delimiter.Length, delimiter.Length);
         }
     }
-    sealed public class SearchToken
+    public sealed class SearchToken
     {
         public string Key { get; }
         public string Value { get; set; }
@@ -25,7 +25,7 @@ namespace CSSockets.Http.Structures
         public override string ToString()
             => Key + "=" + Value;
     }
-    sealed public class SearchTokenList
+    public sealed class SearchTokenList
     {
         private readonly List<SearchToken> tokens = new List<SearchToken>();
 
@@ -79,7 +79,7 @@ namespace CSSockets.Http.Structures
 
         public override string ToString() => tokens.Count == 0 ? "" : "?" + tokens.Join("&");
     }
-    sealed public class Path
+    public sealed class Path
     {
         private enum TraverseResult : byte
         {
@@ -179,7 +179,7 @@ namespace CSSockets.Http.Structures
         public static implicit operator Path(string value) => new Path(value);
         public static implicit operator string(Path value) => value.FullPath;
     }
-    sealed public class Query
+    public sealed class Query
     {
         public Path Path { get; set; }
         public string Hash { get; set; }

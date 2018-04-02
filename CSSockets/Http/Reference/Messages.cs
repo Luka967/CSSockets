@@ -5,21 +5,6 @@ using CSSockets.Http.Structures;
 
 namespace CSSockets.Http.Reference
 {
-    public class OutgoingRequest : OutgoingMessage<ResponseHead, RequestHead>
-    {
-        public OutgoingRequest(Structures.Version version, ClientConnection connection) : base(version, connection) { }
-        public Query Query
-        {
-            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.Query;
-            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.Query = value; }
-        }
-        public string Method
-        {
-            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.Method;
-            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.Method = value; }
-        }
-    }
-
     public class IncomingRequest : IncomingMessage<RequestHead, ResponseHead>
     {
         public IncomingRequest(RequestHead head, BodyType bodyType, ServerConnection connection) : base(head, bodyType, connection) { }
@@ -61,13 +46,5 @@ namespace CSSockets.Http.Reference
             Connection.Abandon();
             return c;
         }
-    }
-
-    public class IncomingResponse : IncomingMessage<ResponseHead, RequestHead>
-    {
-        public new ClientConnection Connection => base.Connection as ClientConnection;
-        public IncomingResponse(ResponseHead head, BodyType bodyType, ClientConnection connection) : base(head, bodyType, connection) { }
-        public ushort StatusCode => Head.StatusCode.Value;
-        public string StatusDescription => Head.StatusDescription;
     }
 }

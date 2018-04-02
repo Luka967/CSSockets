@@ -78,7 +78,7 @@ namespace CSSockets.Tcp
             Terminate();
         }
 
-        internal bool Internal(byte[] source) => Readable.Write(source);
+        internal bool InternalWriteReadable(byte[] source) => Readable.Write(source);
         internal byte[] InternalReadWritable(ulong length) => Writable.Read(Math.Min(Writable.Buffered, length));
         internal bool InternalEndReadable() => EndReadable();
         internal bool InternalEndWritable() => EndWritable();

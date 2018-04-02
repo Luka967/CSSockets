@@ -423,7 +423,7 @@ namespace CSSockets.Tcp
             byte[] data = new byte[available];
             wrapper.Socket.Receive(data, 0, available, SocketFlags.None, out SocketError code);
             if (code == SocketError.Success)
-                return ClientLookup[wrapper].Internal(data) && ClientExtendTimeout(wrapper);
+                return ClientLookup[wrapper].InternalWriteReadable(data) && ClientExtendTimeout(wrapper);
             else return Unbind(wrapper, code);
         }
         private bool ClientSend(SocketWrapper wrapper)

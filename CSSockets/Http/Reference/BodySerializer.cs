@@ -80,15 +80,11 @@ namespace CSSockets.Http.Reference
                         Bhandle(CRLF_BYTES);
                         Bhandle(source);
                         Bhandle(CRLF_BYTES);
-                        CurrentContentLength += (ulong)source.Length + 2 + (ulong)source.LongLength + 2;
+                        CurrentContentLength += (ulong)source.LongLength;
                     }
                     else
-                    {
                         // last chunk
                         Bhandle(LAST_CHUNK);
-                        ContentLength = CurrentContentLength += 5;
-                        return Finish();
-                    }
                     break;
             }
             return false;
@@ -138,9 +134,8 @@ namespace CSSockets.Http.Reference
                 {
                     if (CompressionType != CompressionType.None && CompressionType != CompressionType.Unknown)
                     {
-                        CompressorDuplex compressor = transform as CompressorDuplex;
-                        compressor.Finish();
-                        if (compressor.Buffered > 0) WriteTransformed(compressor.Read());
+                        (transform as CompressorDuplex).Finish();
+                        if (transform.Buffered > 0) WriteTransformed(transform.Read());
                     }
                     WriteTransformed(null);
                 }

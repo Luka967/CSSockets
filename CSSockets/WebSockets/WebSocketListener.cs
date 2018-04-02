@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 
 namespace CSSockets.WebSockets
 {
-    public delegate bool ClientVerifierHandler(ClientRequest req);
+    public delegate bool ClientVerifierHandler(IncomingRequest req);
     public delegate void ConnectionHandler(WebSocket newConnection);
     public class WebSocketListener
     {
@@ -20,8 +20,8 @@ namespace CSSockets.WebSockets
         public WebSocketListener(EndPoint listenEndpoint) => Base = new Listener(listenEndpoint) { OnRequest = _upgrade };
         public WebSocketListener(Listener listener) => Base = listener;
 
-        private void _upgrade(ClientRequest req, ServerResponse res) => Upgrade(req, res);
-        public bool Upgrade(ClientRequest req, ServerResponse res)
+        private void _upgrade(IncomingRequest req, OutgoingResponse res) => Upgrade(req, res);
+        public bool Upgrade(IncomingRequest req, OutgoingResponse res)
         {
             if (req.Version != "HTTP/1.1")
                 return dropRequest(res, 505, "HTTP Version Not Supported", "Use HTTP/1.1");
@@ -48,8 +48,8 @@ namespace CSSockets.WebSockets
             string str = Convert.ToBase64String(result, Base64FormattingOptions.None);
             hasher.Dispose();
 
-            res.ResponseCode = 101;
-            res.ResponseDescription = "Switching Protocols";
+            res.StatusCode = 101;
+            res.StatusDescription = "Switching Protocols";
             res["Connection"] = "Upgrade";
             res["Upgrade"] = "websocket";
             res["Sec-WebSocket-Version"] = "13";
@@ -62,10 +62,10 @@ namespace CSSockets.WebSockets
             return true;
         }
 
-        private bool dropRequest(ServerResponse res, ushort code, string reason, string body, params Header[] otherHeaders)
+        private bool dropRequest(OutgoingResponse res, ushort code, string reason, string body, params Header[] otherHeaders)
         {
-            res.ResponseCode = code;
-            res.ResponseDescription = reason;
+            res.StatusCode = code;
+            res.StatusDescription = reason;
             res["Content-Length"] = body.Length.ToString();
             res["Connection"] = "close";
             foreach (Header header in otherHeaders) res[header.Name] = header.Value;

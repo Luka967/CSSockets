@@ -1,20 +1,15 @@
-﻿using System;
-using CSSockets.Tcp;
+﻿using CSSockets.Tcp;
 using CSSockets.Streams;
 using CSSockets.Http.Base;
 
 namespace CSSockets.Http.Reference
 {
-    public delegate void ClientRequestHandler(ClientRequest request, ServerResponse response);
+    public delegate void ClientRequestHandler(IncomingRequest request, OutgoingResponse response);
     public sealed class ServerConnection : Connection<RequestHead, ResponseHead>
     {
-        static int id = 0;
-        int mid = ++id;
-        int reqc = 0;
-        public ServerConnection(Connection socket, ClientRequestHandler handler) : base(socket)
-            => Handler = handler;
+        public ServerConnection(Connection connection, ClientRequestHandler handler) : base(connection) => Handler = handler;
 
-        public (ClientRequest req, ServerResponse res)? CurrentMessage { get; private set; } = null;
+        public (IncomingRequest req, OutgoingResponse res)? CurrentMessage { get; private set; } = null;
         public ClientRequestHandler Handler { get; set; }
         internal bool upgrading = false;
         private bool hasReqHead = false;
@@ -33,11 +28,10 @@ namespace CSSockets.Http.Reference
             WaitHead();
             return true;
         }
-
         private void _terminate() => Terminate();
+
         private void WaitHead()
         {
-            reqc++;
             hasReqHead = hasResHead = hasReqBody = hasResBody = false;
             HeadParser.OnOutput += OnReqHead;
             HeadParser.Pipe(HeadParser);
@@ -57,8 +51,8 @@ namespace CSSockets.Http.Reference
             if (bodyType == null) { Terminate(); return; }
             if (!BodyParser.TrySetFor(bodyType.Value)) { Terminate(); return; }
 
-            ClientRequest req = new ClientRequest(head, bodyType.Value, this);
-            ServerResponse res = new ServerResponse(head.Version, this);
+            IncomingRequest req = new IncomingRequest(head, bodyType.Value, this);
+            OutgoingResponse res = new OutgoingResponse(head.Version, this);
             CurrentMessage = (req, res);
 
             BodyParser.OnFinish += OnReqBodyFinish;
@@ -80,7 +74,7 @@ namespace CSSockets.Http.Reference
         public override bool SendHead(ResponseHead head)
         {
             if (!hasReqHead) return false;
-            BodyType? bodyType = BodyType.TryDetectFor(head, true);
+            BodyType? bodyType = BodyType.TryDetectFor(head, false);
             if (bodyType == null) return !Terminate();
             if (!BodySerializer.TrySetFor(bodyType.Value)) return !Terminate();
             hasResHead = true;
@@ -94,32 +88,45 @@ namespace CSSockets.Http.Reference
             CurrentMessage.Value.res.buffer.Pipe(BodySerializer);
             return true;
         }
-        public bool SendContinueHead(ResponseHead head)
+        public bool SendContinue()
         {
             if (!hasReqHead) return false;
-            HeadSerializer.Write(head);
-            HeadSerializer.Pipe(Base);
-            HeadSerializer.Unpipe();
+            ResponseHeadSerializer serializer = new ResponseHeadSerializer();
+            serializer.Pipe(Base);
+            serializer.Write(new ResponseHead()
+            {
+                StatusCode = 100,
+                StatusDescription = "Continue",
+                Version = CurrentMessage.Value.req.Version
+            });
+            serializer.End();
             return true;
         }
         private void finishResponse() => FinishResponse(false);
         public override bool FinishResponse() => FinishResponse(true);
         private bool FinishResponse(bool finishBody)
         {
-            if (!hasReqHead || !hasResHead) return false;
+            if (!hasReqHead || !hasResHead) return finishBody;
             OnReqBodyFinish();
             hasResBody = true;
 
-            BodySerializer.Unpipe();
             BodySerializer.OnFinish -= finishResponse;
-
             CurrentMessage.Value.req.buffer.End();
             CurrentMessage.Value.res.buffer.End();
+            CurrentMessage = null;
+            if (finishBody)
+            {
+                if (BodySerializer.ContentLength == null && BodySerializer.TransferEncoding == TransferEncoding.Raw)
+                    // unknown body size - close the connection to signal end of body
+                    return BodySerializer.Finish() && Freeze() && Abandon() && Base.End();
+                BodySerializer.Finish();
+            }
+            BodySerializer.Unpipe();
             WaitHead();
             return true;
         }
 
-        public override bool Detach()
+        public override bool Freeze()
         {
             HeadParser.OnFail -= _terminate;
             BodyParser.OnFail -= _terminate;
@@ -130,11 +137,15 @@ namespace CSSockets.Http.Reference
             HeadSerializer.Unpipe();
             BodyParser.Unpipe();
             BodySerializer.Unpipe();
+            hasReqHead = hasReqBody = hasResHead = hasResBody = false;
             return true;
         }
         public override bool Abandon()
         {
-            Detach();
+            Freeze();
+            CurrentMessage?.req.buffer.End();
+            CurrentMessage?.res.buffer.End();
+            CurrentMessage = null;
             Base.Unpipe();
             HeadParser.End();
             HeadSerializer.End();

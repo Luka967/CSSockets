@@ -5,38 +5,52 @@ using CSSockets.Http.Structures;
 
 namespace CSSockets.Http.Reference
 {
-    public class ClientRequest : Request<RequestHead, ResponseHead>
+    public class OutgoingRequest : OutgoingMessage<ResponseHead, RequestHead>
     {
-        public ClientRequest(RequestHead head, BodyType bodyType, ServerConnection connection) : base(head, bodyType, connection) { }
+        public OutgoingRequest(Structures.Version version, ClientConnection connection) : base(version, connection) { }
+        public Query Query
+        {
+            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.Query;
+            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.Query = value; }
+        }
+        public string Method
+        {
+            get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.Method;
+            set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.Method = value; }
+        }
+    }
+
+    public class IncomingRequest : IncomingMessage<RequestHead, ResponseHead>
+    {
+        public IncomingRequest(RequestHead head, BodyType bodyType, ServerConnection connection) : base(head, bodyType, connection) { }
         public string Method => Head.Method;
         public Query Query => Head.Query;
         public Path Path => Head.Query.Path;
     }
 
-    public class ServerResponse : Response<RequestHead, ResponseHead>
+    public class OutgoingResponse : OutgoingMessage<RequestHead, ResponseHead>
     {
-        public ServerResponse(Structures.Version version, ServerConnection connection) : base(version, connection) { }
-        public ushort ResponseCode
+        public new ServerConnection Connection => base.Connection as ServerConnection;
+        public OutgoingResponse(Structures.Version version, ServerConnection connection) : base(version, connection) { }
+        public ushort StatusCode
         {
             get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.StatusCode.Value;
             set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.StatusCode = value; }
         }
-        public string ResponseDescription
+        public string StatusDescription
         {
             get => IsHeadSent ? throw new InvalidOperationException("Head already sent") : head.StatusDescription;
             set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.StatusDescription = value; }
         }
-
-        public override bool SendHead()
+        public bool SendContinue()
         {
-            if (!Connection.SendHead(head)) return false;
-            return IsHeadSent = true;
+            if (!Connection.SendContinue()) return false;
+            return IsContinueSent = true;
         }
-        public override bool End() => base.End() && Connection.FinishResponse();
         public byte[] Upgrade()
         {
             if (!base.End() || !Connection.FinishResponse()) return null;
-            if (!Connection.Detach()) return null;
+            if (!Connection.Freeze()) return null;
             byte[] a = new byte[Connection.HeadParser.Buffered];
             byte[] b = new byte[Connection.BodyParser.ExcessBuffered];
             Connection.HeadParser.Read(a);
@@ -47,5 +61,13 @@ namespace CSSockets.Http.Reference
             Connection.Abandon();
             return c;
         }
+    }
+
+    public class IncomingResponse : IncomingMessage<ResponseHead, RequestHead>
+    {
+        public new ClientConnection Connection => base.Connection as ClientConnection;
+        public IncomingResponse(ResponseHead head, BodyType bodyType, ClientConnection connection) : base(head, bodyType, connection) { }
+        public ushort StatusCode => Head.StatusCode.Value;
+        public string StatusDescription => Head.StatusDescription;
     }
 }

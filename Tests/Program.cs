@@ -7,11 +7,13 @@ using System.Net.Sockets;
 using CSSockets.Http.Base;
 using System.Net.Security;
 using CSSockets.WebSockets;
-using System.Collections.Generic;
+using System.IO.Compression;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Structures;
+using System.Collections.Generic;
 using static System.Text.Encoding;
 using TcpListener = CSSockets.Tcp.Listener;
+using HttpListener = CSSockets.Http.Reference.Listener;
 using System.Security.Cryptography.X509Certificates;
 
 namespace Test
@@ -20,32 +22,62 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            WebSocketStreamTest(args);
+            shitty_showcase();
         }
 
-        public static void WebSocketStreamTest(string[] args)
+        public static void shitty_showcase()
         {
-            WebSocketListener listener = new WebSocketListener(new IPEndPoint(IPAddress.Any, 420));
-            listener.OnConnection += (ws) =>
+            HttpListener http = new HttpListener(new IPEndPoint(IPAddress.Any, 420));
+            WebSocketListener ws = new WebSocketListener(http);
+            http.OnRequest = (req, res) =>
             {
-                new Thread(() =>
-                {
-                    Thread.Sleep(1000);
-                    WebSocket.Streamer streamer = ws.Stream();
-                    //streamer.Cork();
-                    StreamWriter writer = new StreamWriter(streamer);
-                    writer.WriteFloat32LE(float.NaN);
-                    writer.WriteFloat32LE(2);
-                    writer.WriteFloat32LE(8);
-                    writer.WriteFloat32LE(25);
-                    writer.WriteFloat32LE(-9825);
-                    writer.WriteFloat32LE(float.NegativeInfinity);
-                    streamer.End();
-                }).Start();
+                if (req["Connection"] == "Upgrade")
+                    ws.Upgrade(req, res);
+                else switch (req.Path)
+                    {
+                        case "/test":
+                            res.StatusCode = 200;
+                            res.StatusDescription = "OK";
+                            res["Content-Type"] = "text/plain";
+                            res["Transfer-Encoding"] = "chunked";
+                            res["Content-Encoding"] = "deflate";
+                            res.SetCompression(CompressionType.Deflate, CompressionLevel.Optimal);
+                            res.Write("Test 123456\r\n");
+                            res.Write("Test 789101112\r\n");
+                            res.Write("qqqqqqqqqqqqqqqq");
+                            res.End();
+                            break;
+                        case "/favicon.ico":
+                            res.StatusCode = 404;
+                            res.StatusDescription = "Not Found";
+                            res["Content-Length"] = "0";
+                            res.End();
+                            break;
+                        default:
+                            res.StatusCode = 403;
+                            res.StatusDescription = "Forbidden";
+                            res["Content-Length"] = "0";
+                            res.End();
+                            break;
+                    }
             };
-            listener.Start();
+            ws.OnConnection += (connection) =>
+            {
+                Console.WriteLine("connection");
+                WebSocket.Streamer streamer = connection.Stream();
+                streamer.Cork();
+                StreamWriter writer = new StreamWriter(streamer);
+                writer.WriteFloat32LE(float.NaN);
+                writer.WriteFloat32LE(float.NegativeInfinity);
+                writer.WriteUIntLE(123456, 24);
+                writer.WriteStringUTF8("NIGGER");
+                writer.WriteUInt8(0);
+                streamer.End();
+                Console.WriteLine("sent");
+            };
+            ws.Start();
             Console.ReadKey();
-            listener.Stop();
+            ws.Stop();
         }
 
         public static void StreamReaderWriterTest(string[] args)
@@ -166,7 +198,7 @@ namespace Test
             byte[] sending = new byte[] { 1, 2, 3, 4, 5 };
 
             TcpSocketScalabilityMetrics metrics = new TcpSocketScalabilityMetrics();
-            metrics.attempts = 2000;
+            metrics.attempts = 500;
 
             TcpListener listener = new TcpListener();
             listener.Backlog = metrics.attempts;
@@ -174,7 +206,7 @@ namespace Test
             listener.OnConnection += (server) =>
             {
                 Interlocked.Increment(ref metrics.serverActive);
-                server.TimeoutAfter = new TimeSpan(0, 0, 5);
+                server.TimeoutAfter = new TimeSpan(0, 1, 0);
                 server.OnData += (data) => Interlocked.Increment(ref metrics.datasReceieved);
                 server.OnError += (e) =>
                 {
@@ -196,8 +228,10 @@ namespace Test
 
             Thread.Sleep(1000);
 
+            DateTime start = DateTime.UtcNow;
             List<Connection> clients = new List<Connection>();
 
+            Console.WriteLine("CLIENT: created / active / success / error / total SERVER: active / timeout / success / error / total DATA: sent / recvd IO: connections / listeners / sockets / threads");
             for (int i = 0; i < metrics.attempts; i++)
             {
                 Interlocked.Increment(ref metrics.clientCreated);
@@ -223,24 +257,24 @@ namespace Test
                 };
                 clients.Add(client);
                 if (metrics.clientCreated % 100 == 0)
-                    Console.WriteLine(metrics.ToString());
+                    Console.WriteLine("[{0}] {1}", (DateTime.UtcNow - start).TotalSeconds.ToString("F6").PadLeft(12), metrics.ToString());
             }
 
-            Console.WriteLine("clients created");
+            Console.WriteLine("[{0}] {1} clients created", (DateTime.UtcNow - start).TotalSeconds.ToString("F6").PadLeft(12), metrics.attempts);
 
             for (int i = 0; i < metrics.attempts; i++)
                 clients[i].Connect(clientEndPoint);
 
-            Console.WriteLine("clients connecting");
+            Console.WriteLine("[{0}] {1} clients connecting", (DateTime.UtcNow - start).TotalSeconds.ToString("F6").PadLeft(12), metrics.attempts);
 
             while (true)
             {
-                Console.WriteLine(metrics.ToString());
+                Console.WriteLine("[{0}] {1}", (DateTime.UtcNow - start).TotalSeconds.ToString("F6").PadLeft(12), metrics.ToString());
                 if (IOControl.ConnectionCount == 0) break;
                 Thread.Sleep(200);
             }
             listener.Stop();
-            Console.WriteLine("done");
+            Console.WriteLine("[{0}] done", (DateTime.UtcNow - start).TotalSeconds.ToString("F6").PadLeft(12));
             Console.ReadKey();
         }
 
@@ -271,7 +305,7 @@ namespace Test
         public static void HttpListenerConnectionTest(string[] args)
         {
             IPEndPoint endPoint = new IPEndPoint(IPAddress.Any, 420);
-            CSSockets.Http.Reference.Listener listener = new CSSockets.Http.Reference.Listener(endPoint);
+            HttpListener listener = new HttpListener(endPoint);
             listener.OnConnection += (conn) => Console.WriteLine("New connection from {0}", conn.Base.RemoteAddress);
             listener.OnRequest = (req, res) =>
             {

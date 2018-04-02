@@ -1,13 +1,14 @@
 ﻿using System;
 using CSSockets.Streams;
+using System.IO.Compression;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Structures;
 
 namespace CSSockets.Http.Base
 {
-    public abstract class Request<TParse, TSerial> : IBufferedReadable
+    public abstract class IncomingMessage<TParse, TSerialize> : IBufferedReadable
         where TParse : Head, new()
-        where TSerial : Head, new()
+        where TSerialize : Head, new()
     {
         public TParse Head { get; }
         public Structures.Version Version => Head.Version;
@@ -23,14 +24,14 @@ namespace CSSockets.Http.Base
             set => Head.Headers[index] = value;
         }
 
-        protected Request(TParse head, BodyType bodyType, Connection<TParse, TSerial> connection)
+        protected IncomingMessage(TParse head, BodyType bodyType, Connection<TParse, TSerialize> connection)
         {
             Head = head;
             this.bodyType = bodyType;
             Connection = connection;
         }
 
-        public Connection<TParse, TSerial> Connection { get; }
+        public Connection<TParse, TSerialize> Connection { get; }
         internal readonly MemoryDuplex buffer = new MemoryDuplex();
         protected readonly BodyType bodyType;
         public TransferEncoding TransferEncoding => bodyType.TransferEncoding;
@@ -54,18 +55,18 @@ namespace CSSockets.Http.Base
         public bool Resume() => buffer.Resume();
         public virtual bool End() => Connection.Terminate();
     }
-    public abstract class Response<TParse, TSerial> : IBufferedWritable
+    public abstract class OutgoingMessage<TParse, TSerialize> : IBufferedWritable
         where TParse : Head, new()
-        where TSerial : Head, new()
+        where TSerialize : Head, new()
     {
-        protected Response(Structures.Version version, Connection<TParse, TSerial> connection)
+        protected OutgoingMessage(Structures.Version version, Connection<TParse, TSerialize> connection)
         {
             Version = version;
             Connection = connection;
         }
 
-        protected TSerial head = new TSerial();
-        public TSerial Head { get => head; set => head = value; }
+        protected TSerialize head = new TSerialize();
+        public TSerialize Head { get => head; set => head = value; }
         public Structures.Version Version { get => head.Version; set => head.Version = value; }
         public HeaderCollection Headers => head.Headers;
         public string this[string key]
@@ -79,10 +80,20 @@ namespace CSSockets.Http.Base
             set { if (IsHeadSent) throw new InvalidOperationException("Head already sent"); head.Headers[index] = value; }
         }
 
-        public Connection<TParse, TSerial> Connection { get; }
+        public Connection<TParse, TSerialize> Connection { get; }
         internal readonly MemoryDuplex buffer = new MemoryDuplex();
-        public bool IsHeadSent { get; protected set; }
-        public abstract bool SendHead();
+        public bool IsHeadSent { get; protected set; } = false;
+        public bool IsContinueSent { get; protected set; } = false;
+        public bool SendHead()
+        {
+            if (!Connection.SendHead(head)) return false;
+            return IsHeadSent = true;
+        }
+        public bool SetCompression(CompressionType compression, CompressionLevel compressionLevel = CompressionLevel.Optimal)
+        {
+            if (!IsHeadSent && !SendHead()) return false;
+            return Connection.BodySerializer.SetCompression(compression, compressionLevel);
+        }
 
         public bool Ended => buffer.Ended;
         public bool IsCorked => buffer.IsPaused;
@@ -106,10 +117,6 @@ namespace CSSockets.Http.Base
         public bool Cork() => buffer.Pause();
         public bool Uncork() => buffer.Resume();
 
-        public virtual bool End()
-        {
-            if (!IsHeadSent && !SendHead()) return false;
-            return true;
-        }
+        public virtual bool End() => !IsHeadSent ? !SendHead() && Connection.FinishResponse() : Connection.FinishResponse();
     }
 }

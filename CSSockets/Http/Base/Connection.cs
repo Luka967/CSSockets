@@ -4,9 +4,9 @@ using CSSockets.Http.Reference;
 
 namespace CSSockets.Http.Base
 {
-    public abstract class Connection<TParse, TSerial> : IEndable
+    public abstract class Connection<TParse, TSerialize> : IEndable
         where TParse : Head, new()
-        where TSerial : Head, new()
+        where TSerialize : Head, new()
     {
         public Connection Base { get; } = null;
         public bool Ended { get; private set; } = false;
@@ -16,21 +16,21 @@ namespace CSSockets.Http.Base
         public event ControlHandler OnEnd;
 
         public HeadParser<TParse> HeadParser { get; protected set; } = null;
-        public HeadSerializer<TSerial> HeadSerializer { get; protected set; } = null;
+        public HeadSerializer<TSerialize> HeadSerializer { get; protected set; } = null;
         public BodyParser BodyParser { get; protected set; } = null;
         public BodySerializer BodySerializer { get; protected set; } = null;
 
-        public Connection(Connection socket)
+        public Connection(Connection connection)
         {
-            Base = socket;
+            Base = connection;
             Base.OnClose += () => End();
             Initialize();
         }
         protected abstract bool Initialize();
-        public abstract bool Abandon();
-        public abstract bool Detach();
-        public abstract bool SendHead(TSerial head);
+        public abstract bool SendHead(TSerialize head);
         public abstract bool FinishResponse();
+        public abstract bool Freeze();
+        public abstract bool Abandon();
 
         public virtual bool Terminate()
         {
@@ -48,8 +48,7 @@ namespace CSSockets.Http.Base
             {
                 if (Ended) return false;
                 Ended = true;
-                if (Base.State == TcpSocketState.Open && !Terminated)
-                    Base.End();
+                if (Base.State == TcpSocketState.Open && !Terminated) Base.End();
                 OnEnd?.Invoke();
                 return Abandon();
             }

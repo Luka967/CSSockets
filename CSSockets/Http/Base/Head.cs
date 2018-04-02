@@ -112,11 +112,7 @@ namespace CSSockets.Http.Base
         protected abstract string Stringify(THead head);
         public bool Write(THead head)
         {
-            lock (Wlock)
-            {
-                if (Ended) return false;
-                return Readable.Write(Encoding.ASCII.GetBytes(Stringify(head)));
-            }
+            lock (Wlock) return !Ended && Readable.Write(Encoding.ASCII.GetBytes(Stringify(head)));
         }
     }
 }

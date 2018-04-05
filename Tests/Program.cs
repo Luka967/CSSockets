@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Net;
 using CSSockets.Tcp;
+using CSSockets.Binary;
 using System.Threading;
 using CSSockets.Streams;
-using System.Net.Sockets;
 using CSSockets.Http.Base;
-using System.Net.Security;
 using CSSockets.WebSockets;
 using System.IO.Compression;
 using CSSockets.Http.Reference;
@@ -14,7 +13,6 @@ using System.Collections.Generic;
 using static System.Text.Encoding;
 using TcpListener = CSSockets.Tcp.Listener;
 using HttpListener = CSSockets.Http.Reference.Listener;
-using System.Security.Cryptography.X509Certificates;
 
 namespace Test
 {
@@ -22,68 +20,13 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            shitty_showcase();
-        }
-
-        public static void shitty_showcase()
-        {
-            HttpListener http = new HttpListener(new IPEndPoint(IPAddress.Any, 420));
-            WebSocketListener ws = new WebSocketListener(http);
-            http.OnRequest = (req, res) =>
-            {
-                if (req["Connection"] == "Upgrade")
-                    ws.Upgrade(req, res);
-                else switch (req.Path)
-                    {
-                        case "/test":
-                            res.StatusCode = 200;
-                            res.StatusDescription = "OK";
-                            res["Content-Type"] = "text/plain";
-                            res["Transfer-Encoding"] = "chunked";
-                            res["Content-Encoding"] = "deflate";
-                            res.SetCompression(CompressionType.Deflate, CompressionLevel.Optimal);
-                            res.Write("Test 123456\r\n");
-                            res.Write("Test 789101112\r\n");
-                            res.Write("qqqqqqqqqqqqqqqq");
-                            res.End();
-                            break;
-                        case "/favicon.ico":
-                            res.StatusCode = 404;
-                            res.StatusDescription = "Not Found";
-                            res["Content-Length"] = "0";
-                            res.End();
-                            break;
-                        default:
-                            res.StatusCode = 403;
-                            res.StatusDescription = "Forbidden";
-                            res["Content-Length"] = "0";
-                            res.End();
-                            break;
-                    }
-            };
-            ws.OnConnection += (connection) =>
-            {
-                Console.WriteLine("connection");
-                WebSocket.Streamer streamer = connection.Stream();
-                streamer.Cork();
-                StreamWriter writer = new StreamWriter(streamer);
-                writer.WriteFloat32LE(float.NaN);
-                writer.WriteFloat32LE(float.NegativeInfinity);
-                writer.WriteUIntLE(123456, 24);
-                writer.WriteStringUTF8("NIGGER");
-                writer.WriteUInt8(0);
-                streamer.End();
-                Console.WriteLine("sent");
-            };
-            ws.Start();
-            Console.ReadKey();
-            ws.Stop();
+            StreamReaderWriterTest(args);
         }
 
         public static void StreamReaderWriterTest(string[] args)
         {
             MemoryDuplex duplex = new MemoryDuplex();
-            StreamReader reader = new StreamReader(duplex);
+            Reader reader = new StreamReader(duplex);
             StreamWriter writer = new StreamWriter(duplex);
 
             // reading

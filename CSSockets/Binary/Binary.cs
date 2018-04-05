@@ -1,123 +1,17 @@
 ﻿using System;
 using System.Linq;
 using System.Text;
-using System.Runtime.InteropServices;
+using CSSockets.Streams;
 
-namespace CSSockets.Streams
+namespace CSSockets.Binary
 {
-    public static class BinaryConversion
+    public abstract class Reader
     {
-        public static ulong GetBE(byte[] data)
-        {
-            ulong value = 0;
-            for (int i = 0; i < data.Length; i++) value = unchecked(value << 8 | (data[i] & 0xFFu));
-            return value;
-        }
-        public static ulong GetLE(byte[] data)
-        {
-            ulong value = 0;
-            for (int i = 0; i < data.Length; i++) value = unchecked(value << 8 | (data[data.Length - 1 - i] & 0xFFu));
-            return value;
-        }
-        public static bool IsNegativeBE(ulong value, int size) => ((value >> (size - 8)) & 128) == 128;
-        public static bool IsNegativeLE(ulong value, int size) => (value & 128) == 128;
-        public static long ToSignedBE(ulong value, int size) => IsNegativeBE(value, size) ? -(long)Math.Pow(2, size) + (long)value : (long)value;
-        public static long ToSignedLE(ulong value, int size) => IsNegativeLE(value, size) ? -(long)Math.Pow(2, size) + (long)value : (long)value;
-        public static byte[] SerializeBE(ulong value, int size)
-        {
-            byte[] data = new byte[size];
-            for (int i = 0; i < size; i++)
-            {
-                data[size - 1 - i] = (byte)(value & 0xFF);
-                value >>= 8;
-            }
-            return data;
-        }
-        public static byte[] SerializeLE(ulong value, int size)
-        {
-            byte[] data = new byte[size];
-            for (int i = 0; i < size; i++)
-            {
-                data[i] = (byte)(value & 0xFF);
-                value >>= 8;
-            }
-            return data;
-        }
+        protected abstract byte[] NonBlockingRead(ulong length);
+        protected abstract byte[] NonBlockingUnsafeRead(ulong length);
 
-        [StructLayout(LayoutKind.Explicit)]
-        public struct IntFloat32
-        {
-            [FieldOffset(0)]
-            int i;
-            [FieldOffset(0)]
-            float f;
-
-            public int Integer => i;
-            public float Float => f;
-
-            public IntFloat32(int i) : this()
-            {
-                f = default(float);
-                this.i = i;
-            }
-            public IntFloat32(float f) : this()
-            {
-                i = default(int);
-                this.f = f;
-            }
-        }
-        [StructLayout(LayoutKind.Explicit)]
-        public struct IntFloat64
-        {
-            [FieldOffset(0)]
-            long i;
-            [FieldOffset(0)]
-            double f;
-
-            public long Integer => i;
-            public double Float => f;
-
-            public IntFloat64(long i) : this()
-            {
-                f = default(double);
-                this.i = i;
-            }
-            public IntFloat64(double f) : this()
-            {
-                i = default(long);
-                this.f = f;
-            }
-        }
-    }
-    public class StreamReader
-    {
-        public IReadable Stream { get; }
-
-        public StreamReader(IReadable readable) => Stream = readable;
-        public StreamReader(byte[] data)
-        {
-            MemoryDuplex duplex = new MemoryDuplex();
-            duplex.Write(data);
-            Stream = duplex;   
-        }
-
-        private byte[] NonBlockingUnsafeRead(ulong length)
-        {
-            byte[] data = new byte[length];
-            ulong read = Stream.Read(data);
-            if (read != length) return null;
-            return data;
-        }
-        private byte[] NonBlockingRead(ulong length)
-        {
-            byte[] data = new byte[length];
-            ulong read = Stream.Read(data);
-            if (read != length) throw new IndexOutOfRangeException("Reached end of stream");
-            return data;
-        }
-
-        public byte ReadUInt8() => Stream.Read(1)[0];
-        public sbyte ReadInt8() => (sbyte)Stream.Read(1)[0];
+        public byte ReadUInt8() => NonBlockingRead(1)[0];
+        public sbyte ReadInt8() => (sbyte)NonBlockingRead(1)[0];
 
         public ushort ReadUInt16BE() => (ushort)BinaryConversion.GetBE(NonBlockingRead(2));
         public ushort ReadUInt16LE() => (ushort)BinaryConversion.GetLE(NonBlockingRead(2));
@@ -134,10 +28,10 @@ namespace CSSockets.Streams
         public long ReadInt64BE() => (long)BinaryConversion.GetBE(NonBlockingRead(8));
         public long ReadInt64LE() => (long)BinaryConversion.GetLE(NonBlockingRead(8));
 
-        public ulong ReadUIntBE(byte size) => BinaryConversion.GetBE(NonBlockingRead(size / 8u));
-        public ulong ReadUIntLE(byte size) => BinaryConversion.GetLE(NonBlockingRead(size / 8u));
-        public long ReadIntBE(byte size) => BinaryConversion.ToSignedBE(BinaryConversion.GetBE(NonBlockingRead(size / 8u)), size);
-        public long ReadIntLE(byte size) => BinaryConversion.ToSignedLE(BinaryConversion.GetLE(NonBlockingRead(size / 8u)), size);
+        public ulong ReadUIntBE(byte bitSize) => BinaryConversion.GetBE(NonBlockingRead(bitSize / 8u));
+        public ulong ReadUIntLE(byte bitSize) => BinaryConversion.GetLE(NonBlockingRead(bitSize / 8u));
+        public long ReadIntBE(byte bitSize) => BinaryConversion.ToSignedBE(BinaryConversion.GetBE(NonBlockingRead(bitSize / 8u)), bitSize);
+        public long ReadIntLE(byte bitSize) => BinaryConversion.ToSignedLE(BinaryConversion.GetLE(NonBlockingRead(bitSize / 8u)), bitSize);
 
         public float ReadFloat32BE() => new BinaryConversion.IntFloat32(ReadInt32BE()).Float;
         public float ReadFloat32LE() => new BinaryConversion.IntFloat32(ReadInt32LE()).Float;
@@ -155,12 +49,63 @@ namespace CSSockets.Streams
             PrimitiveBuffer buffer = new PrimitiveBuffer();
             while (true)
             {
-                if (Stream.Ended) break;
                 byte[] read = NonBlockingUnsafeRead(charSize / 8u);
                 if (read == null || read.All((v) => v == 0)) break;
                 buffer.Write(read);
             }
             return encoding.GetString(buffer.Read(buffer.Length));
+        }
+    }
+    public sealed class StreamReader : Reader
+    {
+        public IReadable Stream { get; }
+
+        public StreamReader(IReadable readable) => Stream = readable;
+
+        protected sealed override byte[] NonBlockingUnsafeRead(ulong length)
+        {
+            byte[] data = new byte[length];
+            ulong read = Stream.Read(data);
+            if (read != length) return null;
+            return data;
+        }
+        protected sealed override byte[] NonBlockingRead(ulong length)
+        {
+            byte[] data = new byte[length];
+            ulong read = Stream.Read(data);
+            if (read != length) throw new IndexOutOfRangeException("Reached end of stream");
+            return data;
+        }
+    }
+    public sealed class MemoryReader : Reader
+    {
+        public byte[] Data { get; }
+        private readonly object sync = new object();
+        private ulong size;
+        private ulong offset = 0;
+
+        public MemoryReader(byte[] data, ulong offset = 0)
+        {
+            Data = data;
+            size = (ulong)data.LongLength;
+            this.offset = offset;
+        }
+
+        protected sealed override byte[] NonBlockingUnsafeRead(ulong length)
+        {
+            lock (sync)
+            {
+                if (offset + length > size) return null;
+                return PrimitiveBuffer.Slice(Data, offset - length, offset += length);
+            }
+        }
+        protected sealed override byte[] NonBlockingRead(ulong length)
+        {
+            lock (sync)
+            {
+                if (offset + length > size) throw new IndexOutOfRangeException("Reached end of memory");
+                return PrimitiveBuffer.Slice(Data, offset - length, offset += length);
+            }
         }
     }
 
@@ -188,10 +133,10 @@ namespace CSSockets.Streams
         public bool WriteInt64BE(long value) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, 8));
         public bool WriteInt64LE(long value) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, 8));
 
-        public bool WriteUIntBE(ulong value, byte size) => Stream.Write(BinaryConversion.SerializeBE(value, size / 8));
-        public bool WriteUIntLE(ulong value, byte size) => Stream.Write(BinaryConversion.SerializeLE(value, size / 8));
-        public bool WriteIntBE(long value, byte size) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, size / 8));
-        public bool WriteIntLE(long value, byte size) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, size / 8));
+        public bool WriteUIntBE(ulong value, byte bitSize) => Stream.Write(BinaryConversion.SerializeBE(value, bitSize / 8));
+        public bool WriteUIntLE(ulong value, byte bitSize) => Stream.Write(BinaryConversion.SerializeLE(value, bitSize / 8));
+        public bool WriteIntBE(long value, byte bitSize) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, bitSize / 8));
+        public bool WriteIntLE(long value, byte bitSize) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, bitSize / 8));
 
         public bool WriteFloat32BE(float value) => Stream.Write(BinaryConversion.SerializeBE((ulong)new BinaryConversion.IntFloat32(value).Integer, 4));
         public bool WriteFloat32LE(float value) => Stream.Write(BinaryConversion.SerializeLE((ulong)new BinaryConversion.IntFloat32(value).Integer, 4));

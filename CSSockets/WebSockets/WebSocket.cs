@@ -178,8 +178,9 @@ namespace CSSockets.WebSockets
                 Send(Behavior.Get(true, 9, data));
             }
         }
-        public virtual void Close(ushort code, string reason)
+        public virtual void Close(ushort code, string reason = null)
         {
+            reason = reason ?? "";
             lock (OpsLock)
             {
                 if (StreamerSentFirst) throw new InvalidOperationException("Cannot close while streaming");

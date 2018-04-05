@@ -40,10 +40,8 @@ namespace CSSockets.Tcp
         public Listener() => Create();
         public Listener(EndPoint endPoint) : this() => BindEndPoint = endPoint;
 
-        private void _OnError(SocketError error)
-            => OnError?.Invoke(error);
-        private void _OnConnection(Connection newConnection)
-            => OnConnection?.Invoke(newConnection);
+        private void _OnError(SocketError error) => OnError?.Invoke(error);
+        private void _OnConnection(Connection newConnection) => OnConnection?.Invoke(newConnection);
 
         public void Start()
         {

@@ -7,7 +7,7 @@ namespace CSSockets.Tcp
     public class Listener
     {
         private readonly object sync = new object();
-        public SocketWrapper _base = null;
+        private SocketWrapper _base = null;
         public SocketWrapper Base => (_base?.State == WrapperState.Destroyed ? Create() : _base) ?? Create();
 
         private SocketWrapper Create()
@@ -35,7 +35,7 @@ namespace CSSockets.Tcp
         }
 
         public event ConnectionHandler OnConnection;
-        public event SocketErrorHandler OnError;
+        public event SocketCodeHandler OnError;
 
         public Listener() => Create();
         public Listener(EndPoint endPoint) : this() => BindEndPoint = endPoint;

@@ -1,15 +1,15 @@
 ﻿using System;
 
-namespace CSSockets.Http.Structures
+namespace CSSockets.Http.Definition
 {
-    public sealed class Version
+    public struct Version
     {
-        public byte Major { get; set; }
-        public byte Minor { get; set; }
+        public byte Major { get; }
+        public byte Minor { get; }
 
         public static bool TryParse(string str, out Version result)
         {
-            result = null;
+            result = default(Version);
             if (str.Length < 5 || !str.StartsWith("HTTP/"))
                 return false;
             str = str.Substring(5);
@@ -50,18 +50,10 @@ namespace CSSockets.Http.Structures
             return new Version((byte)version.Major, (byte)version.Minor);
         }
         public static implicit operator Version(string str) => Parse(str);
-        public static bool operator ==(Version a, Version b)
-        {
-            if (a is null && b is null) return true;
-            if (a is null || b is null) return false;
-            return a.Major == b.Major && a.Minor == b.Minor;
-        }
-        public static bool operator !=(Version a, Version b)
-        {
-            if (a is null && b is null) return false;
-            if (a is null || b is null) return true;
-            return a.Major != b.Major || a.Minor != b.Minor;
-        }
+        public static implicit operator string(Version version) => version.ToString();
+
+        public static bool operator ==(Version a, Version b) => a.Major == b.Major && a.Minor == b.Minor;
+        public static bool operator !=(Version a, Version b) => a.Major != b.Major || a.Minor != b.Minor;
         public override bool Equals(object obj)
         {
             if (obj is null) return false;

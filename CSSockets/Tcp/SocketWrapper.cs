@@ -12,15 +12,11 @@ namespace CSSockets.Tcp
 
         public Socket Socket { get; }
         internal IOThread BoundThread = null;
-        public WrapperType Type { get; internal set; } = WrapperType.Unset;
-        private WrapperState _state = WrapperState.Unset;
-        public WrapperState State
-        {
-            get => _state;
-            internal set => _state = value;
-        }
+        public WrapperState State { get; internal set; } = WrapperState.Unset;
         public IPEndPoint Local { get; internal set; } = null;
         public IPEndPoint Remote { get; internal set; } = null;
+        public bool EndedReadable { get; internal set; } = false;
+        public bool EndedWritable { get; internal set; } = false;
 
         public SocketWrapper() : this(new Socket(SocketType.Stream, ProtocolType.Tcp)) { }
         public SocketWrapper(Socket socket)
@@ -99,7 +95,7 @@ namespace CSSockets.Tcp
                 Type = OperationType.ClientTerminate,
             });
 
-        public SocketErrorHandler WrapperOnSocketError { get; set; }
+        public SocketCodeHandler WrapperOnSocketError { get; set; }
         public ControlHandler WrapperOnUnbind { get; set; }
 
         public ConnectionHandler ServerOnConnection { get; set; }

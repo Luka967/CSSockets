@@ -7,37 +7,47 @@ namespace CSSockets.Tcp
 {
     public enum TcpSocketState : byte
     {
-        Dormant = 0,
-        Connecting = 1,
-        Open = 2,
-        Closing = 3,
-        Closed = 4
+        Dormant,
+        Connecting,
+        Open,
+        Closing,
+        Closed 
     }
-    public sealed class Connection : BaseDuplex
+    public sealed class Connection : Duplex, IEndable
     {
-        private static readonly TcpSocketState[] STATES =
-            new TcpSocketState[]
+        private static readonly TcpSocketState[] STATE_TRANSLATE = new TcpSocketState[]
             {
-                TcpSocketState.Dormant,     // SocketWrapperState.ClientDormant
-                TcpSocketState.Connecting,  // SocketWrapperState.ClientConnecting
-                TcpSocketState.Open,        // SocketWrapperState.ClientOpen
-                TcpSocketState.Open,        // SocketWrapperState.ClientReadonly
-                TcpSocketState.Open,        // SocketWrapperState.ClientWriteonly
-                TcpSocketState.Closing,     // SocketWrapperState.ClientLastWrite
-                TcpSocketState.Closed       // SocketWrapperState.Destroyed
+                TcpSocketState.Dormant,
+                TcpSocketState.Dormant,
+                TcpSocketState.Closed,
+                TcpSocketState.Closed,
+                TcpSocketState.Closed,
+                TcpSocketState.Dormant,
+                TcpSocketState.Connecting,
+                TcpSocketState.Open,
+                TcpSocketState.Open,
+                TcpSocketState.Open,
+                TcpSocketState.Closing,
+                TcpSocketState.Closed
             };
+
+        public SocketWrapper Base { get; private set; }
 
         public event ControlHandler OnOpen;
         public event ControlHandler OnTimeout;
-        public override event ControlHandler OnEnd;
+        public event ControlHandler OnDrain;
+        public event ControlHandler OnEnd;
         public event ControlHandler OnClose;
-        public event SocketErrorHandler OnError;
-        public TcpSocketState State => STATES[(int)Base.State - 5];
+        public event SocketCodeHandler OnError;
+
         public bool AllowHalfOpen
         {
             get => Base.ClientAllowHalfOpen;
             set => Base.ClientAllowHalfOpen = value;
         }
+        public bool Ended => Base.State == WrapperState.Destroyed;
+        public ulong BufferedWritable => Writable.Length;
+        public TcpSocketState State => STATE_TRANSLATE[(int)Base.State];
         public TimeSpan? TimeoutAfter
         {
             get => Base.ClientTimeoutAfter;
@@ -45,9 +55,6 @@ namespace CSSockets.Tcp
         }
         public IPAddress LocalAddress => Base.Local?.Address;
         public IPAddress RemoteAddress => Base.Remote?.Address;
-
-        public SocketWrapper Base { get; private set; }
-        internal bool internalIsComingFromServer = false;
 
         internal Connection(SocketWrapper wrapper)
         {
@@ -64,53 +71,59 @@ namespace CSSockets.Tcp
             Base.WrapperAddClient(this);
         }
 
+        internal readonly PrimitiveBuffer Writable = new PrimitiveBuffer();
         private void _OnOpen() => OnOpen?.Invoke();
         private void _OnTimeout()
         {
-            if (OnTimeout != null) OnTimeout();
-            else if (!End()) Terminate();
+            lock (Sync)
+            {
+                if (OnTimeout != null) OnTimeout();
+                else if (!End()) Terminate();
+            }
         }
         private void _OnClose() => OnClose?.Invoke();
         private void _OnRemoteShutdown() => OnEnd?.Invoke();
         private void _OnError(SocketError error)
         {
-            OnError?.Invoke(error);
-            Terminate();
+            lock (Sync)
+            {
+                OnError?.Invoke(error);
+                Terminate();
+            }
         }
 
-        internal bool InternalWriteReadable(byte[] source) => Readable.Write(source);
-        internal byte[] InternalReadWritable(ulong length) => Writable.Read(Math.Min(Writable.Buffered, length));
-        internal bool InternalEndReadable() => EndReadable();
-        internal bool InternalEndWritable() => EndWritable();
+        internal bool  _ReadableWrite(byte[] source) => HandleReadable(source);
+        internal byte[] _WritableRead(ulong maximum)
+        {
+            lock (Sync)
+            {
+                ulong length = Math.Min(maximum, BufferedWritable);
+                if (length == BufferedWritable) OnDrain?.Invoke();
+                return Writable.Read(length);
+            }
+        }
 
-        public bool CanRead => internalIsComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientReadonly;
-        public override byte[] Read() => Readable.Read();
+        public bool CanRead => Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientReadonly;
+        public override byte[] Read() => Readable.Read(BufferedReadable);
         public override byte[] Read(ulong length) => Readable.Read(length);
-        public override ulong Read(byte[] destination) => Readable.Read(destination);
 
-        public bool CanWrite => internalIsComingFromServer || Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientWriteonly;
+        public bool CanWrite => Base.State == WrapperState.ClientOpen || Base.State == WrapperState.ClientWriteonly;
+        protected override bool HandleWritable(byte[] data) => Writable.Write(data);
         public override bool Write(byte[] source)
         {
-            if (!CanWrite) throw new InvalidOperationException("Cannot write to socket");
-            return Writable.Write(source);
-        }
-        public override bool Write(byte[] source, ulong start, ulong end)
-        {
-            if (!CanWrite) throw new InvalidOperationException("Cannot write to socket");
-            return Writable.Write(source, start, end);
+            lock (Sync)
+            {
+                if (!CanWrite) return false;
+                return base.Write(source);
+            }
         }
 
-        public override bool End()
+        public bool End()
         {
-            lock (EndLock)
+            lock (Sync)
             {
-                if (Ended) return false;
                 switch (Base.State)
                 {
-                    case WrapperState.Unset:
-                        if (internalIsComingFromServer)
-                            Base.ClientShutdown();
-                        break;
                     case WrapperState.ClientOpen:
                     case WrapperState.ClientWriteonly:
                         Base.ClientShutdown();
@@ -124,10 +137,9 @@ namespace CSSockets.Tcp
                 return true;
             }
         }
-
         public bool Terminate()
         {
-            lock (EndLock)
+            lock (Sync)
             {
                 if (State == TcpSocketState.Closed) return false;
                 Base.ClientTerminate();
@@ -137,9 +149,8 @@ namespace CSSockets.Tcp
 
         public bool Connect(EndPoint endPoint)
         {
-            lock (EndLock)
+            lock (Sync)
             {
-                if (internalIsComingFromServer) return false;
                 if (Base.State > WrapperState.ClientDormant) return false;
                 Base.ClientConnect(endPoint);
                 return true;

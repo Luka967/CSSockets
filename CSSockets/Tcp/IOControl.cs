@@ -98,10 +98,10 @@ namespace CSSockets.Tcp
         public volatile bool GotFirst = false;
         public Thread Thread = null;
 
-        private List<SocketWrapper>                      WrapperList  = new List      <SocketWrapper>();
-        private Dictionary<Socket       , SocketWrapper> NativeLookup = new Dictionary<Socket       , SocketWrapper>();
-        private Dictionary<SocketWrapper, Connection>    ClientLookup = new Dictionary<SocketWrapper, Connection>();
-        private Dictionary<SocketWrapper, Listener>      ServerLookup = new Dictionary<SocketWrapper, Listener>();
+        private List<SocketWrapper> WrapperList = new List<SocketWrapper>();
+        private Dictionary<Socket, SocketWrapper> NativeLookup = new Dictionary<Socket, SocketWrapper>();
+        private Dictionary<SocketWrapper, Connection> ClientLookup = new Dictionary<SocketWrapper, Connection>();
+        private Dictionary<SocketWrapper, Listener> ServerLookup = new Dictionary<SocketWrapper, Listener>();
 
         private ConcurrentQueue<IOOperation> OperationQueue = new ConcurrentQueue<IOOperation>();
         public bool Enqueue(IOOperation op)
@@ -151,10 +151,11 @@ namespace CSSockets.Tcp
             if (ClientLookup.Remove(wrapper, out Connection connection))
             {
                 ClientCount--;
-                connection.InternalEndReadable();
-                connection.InternalEndWritable();
+                wrapper.EndedReadable = true;
+                wrapper.EndedWritable = true;
                 wrapper.ClientOnClose?.Invoke();
             }
+            wrapper.State = WrapperState.Destroyed;
             if (ServerLookup.Remove(wrapper)) ServerCount--;
             return false;
         }
@@ -175,7 +176,6 @@ namespace CSSockets.Tcp
                 {
                     SocketWrapper wrapper = WrapperList[i];
                     Socket socket = wrapper.Socket;
-                    Connection connection;
                     switch (wrapper.State)
                     {
                         case WrapperState.ClientConnecting:
@@ -196,33 +196,23 @@ namespace CSSockets.Tcp
                             break;
                         case WrapperState.ClientOpen:
                             pollR.Add(socket);
-                            connection = ClientLookup[wrapper];
-                            if (connection.BufferedWritable > 0)
+                            if (ClientLookup[wrapper].BufferedWritable > 0)
                                 pollW.Add(socket);
                             break;
                         case WrapperState.ClientReadonly:
-                            connection = ClientLookup[wrapper];
-                            if (!connection.WritableEnded && connection.BufferedWritable > 0)
-                                pollW.Add(socket);
-                            else if (!connection.WritableEnded)
-                                if (!ClientEndWritable(wrapper)) { i--; break; }
                             pollR.Add(socket);
+                            if (!wrapper.EndedWritable && ClientLookup[wrapper].BufferedWritable > 0)
+                                pollW.Add(socket);
+                            else if (!wrapper.EndedWritable) ClientShutdown(wrapper, false, true);
                             break;
                         case WrapperState.ClientWriteonly:
-                            connection = ClientLookup[wrapper];
-                            if (connection.BufferedWritable > 0)
+                            if (ClientLookup[wrapper].BufferedWritable > 0)
                                 pollW.Add(socket);
                             break;
                         case WrapperState.ClientLastWrite:
-                            connection = ClientLookup[wrapper];
-                            if (!connection.WritableEnded && connection.BufferedWritable > 0)
+                            if (!wrapper.EndedWritable && ClientLookup[wrapper].BufferedWritable > 0)
                                 pollW.Add(socket);
-                            else
-                            {
-                                if (!connection.WritableEnded) ClientEndWritable(wrapper);
-                                Unbind(wrapper);
-                                i--;
-                            }
+                            else { ClientShutdown(wrapper, false, true); i--; }
                             break;
                     }
                 }
@@ -371,7 +361,7 @@ namespace CSSockets.Tcp
                 default: throw new Exception();
             }
         }
-        
+
         private bool ServerAccept(SocketWrapper wrapper)
         {
             do
@@ -423,12 +413,12 @@ namespace CSSockets.Tcp
             byte[] data = new byte[available];
             wrapper.Socket.Receive(data, 0, available, SocketFlags.None, out SocketError code);
             if (code == SocketError.Success)
-                return ClientLookup[wrapper].InternalWriteReadable(data) && ClientExtendTimeout(wrapper);
+                return ClientLookup[wrapper]._ReadableWrite(data) && ClientExtendTimeout(wrapper);
             else return Unbind(wrapper, code);
         }
         private bool ClientSend(SocketWrapper wrapper)
         {
-            byte[] data = ClientLookup[wrapper].InternalReadWritable(65536);
+            byte[] data = ClientLookup[wrapper]._WritableRead(65536);
             wrapper.Socket.Send(data, 0, data.Length, SocketFlags.None, out SocketError code);
             if (code != SocketError.Success) return Unbind(wrapper, code);
             return ClientExtendTimeout(wrapper);
@@ -439,21 +429,6 @@ namespace CSSockets.Tcp
             catch (SocketException ex) { return ex.SocketErrorCode; }
             return SocketError.Success;
         }
-        private bool ClientEndReadable(SocketWrapper wrapper)
-        {
-            SocketError code = ClientSocketShutdown(wrapper.Socket, SocketShutdown.Receive);
-            if (code != SocketError.Success) return Unbind(wrapper, code);
-            ClientLookup[wrapper].InternalEndReadable();
-            wrapper.ClientOnShutdown?.Invoke();
-            return true;
-        }
-        private bool ClientEndWritable(SocketWrapper wrapper)
-        {
-            SocketError code = ClientSocketShutdown(wrapper.Socket, SocketShutdown.Send);
-            if (code != SocketError.Success) return Unbind(wrapper, code);
-            ClientLookup[wrapper].InternalEndWritable();
-            return true;
-        }
         private bool ClientShutdown(SocketWrapper wrapper, bool r, bool w)
         {
             SocketError code = SocketError.Success;
@@ -462,23 +437,27 @@ namespace CSSockets.Tcp
             {
                 case WrapperState.ClientOpen:
                     if (r && w) return Unbind(wrapper);
-                    if (r)
-                        return
-                            ClientEndReadable(wrapper)
-                            && SucceedOperation(wrapper, halfOpen ? WrapperState.ClientWriteonly : WrapperState.ClientLastWrite);
-                    else return SucceedOperation(wrapper, halfOpen ? WrapperState.ClientReadonly : WrapperState.ClientLastWrite);
+                    if (r) return (wrapper.EndedReadable = true) && SucceedOperation(wrapper, halfOpen ? WrapperState.ClientWriteonly : WrapperState.ClientLastWrite);
+                    return SucceedOperation(wrapper, halfOpen ? WrapperState.ClientReadonly : WrapperState.ClientLastWrite);
 
                 case WrapperState.ClientReadonly:
-                    if (w) return Unbind(wrapper);
+                    if (w)
+                    {
+                        if (wrapper.EndedWritable) return Unbind(wrapper);
+                        ClientSocketShutdown(wrapper.Socket, SocketShutdown.Send);
+                    }
                     code = ClientSocketShutdown(wrapper.Socket, SocketShutdown.Receive);
                     if (code != SocketError.Success) return Unbind(wrapper, code);
-                    ClientLookup[wrapper].InternalEndReadable();
                     wrapper.ClientOnShutdown?.Invoke();
-                    return SucceedOperation(wrapper, WrapperState.ClientLastWrite);
+                    return (wrapper.EndedReadable = true) && SucceedOperation(wrapper, WrapperState.ClientLastWrite);
 
                 case WrapperState.ClientWriteonly:
                     if (r) return Unbind(wrapper);
                     return SucceedOperation(wrapper, WrapperState.ClientLastWrite);
+
+                case WrapperState.ClientLastWrite:
+                    if (!wrapper.EndedWritable) ClientSocketShutdown(wrapper.Socket, SocketShutdown.Send);
+                    return Unbind(wrapper);
 
                 default: return Unbind(wrapper);
             }

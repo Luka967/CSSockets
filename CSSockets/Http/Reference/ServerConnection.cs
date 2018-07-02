@@ -1,157 +1,162 @@
 ﻿using CSSockets.Tcp;
 using CSSockets.Streams;
-using CSSockets.Http.Base;
+using CSSockets.Http.Definition;
 
 namespace CSSockets.Http.Reference
 {
-    public delegate void ClientRequestHandler(IncomingRequest request, OutgoingResponse response);
+    public delegate void IncomingRequestHandler(IncomingRequest request, OutgoingResponse response);
     public sealed class ServerConnection : Connection<RequestHead, ResponseHead>
     {
-        public ServerConnection(Connection connection, ClientRequestHandler handler) : base(connection) => Handler = handler;
+        private IncomingRequest _Incoming = null;
+        private OutgoingResponse _Outgoing = null;
+        public override IncomingMessage<RequestHead, ResponseHead> Incoming => _Incoming;
+        public override OutgoingMessage<RequestHead, ResponseHead> Outgoing => _Outgoing;
 
-        public (IncomingRequest req, OutgoingResponse res)? CurrentMessage { get; private set; } = null;
-        public ClientRequestHandler Handler { get; set; }
-        internal bool upgrading = false;
-        private bool hasReqHead = false;
-        private bool hasResHead = false;
-        private bool hasReqBody = false;
+        public IncomingRequestHandler RequestHandler { get; set; }
+
+        public ServerConnection(Connection connection, IncomingRequestHandler requestHandler) : base(connection)
+        {
+            IncomingHead = new RequestHeadParser();
+            OutgoingHead = new ResponseHeadSerializer();
+            IncomingBody = new BodyParser();
+            OutgoingBody = new BodySerializer();
+            IncomingHead.OnFail += OnSegmentFail;
+            IncomingBody.OnFail += OnSegmentFail;
+            OutgoingHead.OnFail += OnSegmentFail;
+            OutgoingBody.OnFail += OnSegmentFail;
+            IncomingHead.Pipe(excess);
+            IncomingBody.Excess.Pipe(excess);
+            RequestHandler = requestHandler;
+            WaitIncoming();
+        }
+
+        private readonly MemoryDuplex excess = new MemoryDuplex();
+        private bool gotReqHead = false;
+        private bool gotReqBody = false;
+        private bool gotResHead = false;
         private bool hasResBody = false;
 
-        protected override bool Initialize()
+        private void WaitIncoming()
         {
-            HeadParser = new RequestHeadParser();
-            HeadSerializer = new ResponseHeadSerializer();
-            BodyParser = new BodyParser();
-            BodySerializer = new BodySerializer();
-            HeadParser.OnFail += _terminate;
-            BodyParser.OnFail += _terminate;
-            WaitHead();
-            return true;
-        }
-        private void _terminate() => Terminate();
-
-        private void WaitHead()
-        {
-            hasReqHead = hasResHead = hasReqBody = hasResBody = false;
-            HeadParser.OnOutput += OnReqHead;
-            HeadParser.Pipe(HeadParser);
-            HeadParser.Unpipe();
-            BodyParser.Excess.Pipe(!hasReqHead ? HeadParser as IWritable : BodyParser as IWritable);
-            BodyParser.Excess.Unpipe();
-            Base.Pipe(!hasReqHead ? HeadParser as IWritable : BodyParser as IWritable);
-        }
-        private void OnReqHead(RequestHead head)
-        {
-            if (hasReqHead) return;
-            hasReqHead = true;
-            Base.Unpipe();
-            HeadParser.OnOutput -= OnReqHead;
-
-            BodyType? bodyType = BodyType.TryDetectFor(head, true);
-            if (bodyType == null) { Terminate(); return; }
-            if (!BodyParser.TrySetFor(bodyType.Value)) { Terminate(); return; }
-
-            IncomingRequest req = new IncomingRequest(head, bodyType.Value, this);
-            OutgoingResponse res = new OutgoingResponse(head.Version, this);
-            CurrentMessage = (req, res);
-
-            BodyParser.OnFinish += OnReqBodyFinish;
-            BodyParser.Pipe(req.buffer);
-            HeadParser.Pipe(BodyParser);
-            HeadParser.Unpipe();
-            if (!hasReqBody) Base.Pipe(BodyParser);
-
-            HeadSerializer.Pipe(Base);
-            Handler(req, res);
-        }
-        private void OnReqBodyFinish()
-        {
-            if (!hasReqHead) return;
-            hasReqBody = true;
-            BodyParser.OnFinish -= OnReqBodyFinish;
-            BodyParser.Unpipe();
-        }
-        public override bool SendHead(ResponseHead head)
-        {
-            if (!hasReqHead) return false;
-            BodyType? bodyType = BodyType.TryDetectFor(head, false);
-            if (bodyType == null) return !Terminate();
-            if (!BodySerializer.TrySetFor(bodyType.Value)) return !Terminate();
-            hasResHead = true;
-
-            HeadSerializer.Write(head);
-            HeadSerializer.Unpipe();
-
-            BodySerializer.OnFinish += finishResponse;
-
-            BodySerializer.Pipe(Base);
-            CurrentMessage.Value.res.buffer.Pipe(BodySerializer);
-            return true;
-        }
-        public bool SendContinue()
-        {
-            if (!hasReqHead) return false;
-            ResponseHeadSerializer serializer = new ResponseHeadSerializer();
-            serializer.Pipe(Base);
-            serializer.Write(new ResponseHead()
+            lock (Sync)
             {
-                StatusCode = 100,
-                StatusDescription = "Continue",
-                Version = CurrentMessage.Value.req.Version
-            });
-            serializer.End();
-            return true;
-        }
-        private void finishResponse() => FinishResponse(false);
-        public override bool FinishResponse() => FinishResponse(true);
-        private bool FinishResponse(bool finishBody)
-        {
-            if (!hasReqHead || !hasResHead) return finishBody;
-            OnReqBodyFinish();
-            hasResBody = true;
-
-            BodySerializer.OnFinish -= finishResponse;
-            CurrentMessage.Value.req.buffer.End();
-            CurrentMessage.Value.res.buffer.End();
-            CurrentMessage = null;
-            if (finishBody)
-            {
-                if (BodySerializer.ContentLength == null && BodySerializer.TransferEncoding == TransferEncoding.Raw)
-                    // unknown body size - close the connection to signal end of body
-                    return BodySerializer.Finish() && Freeze() && Abandon() && Base.End();
-                BodySerializer.Finish();
+                _Incoming = null; _Outgoing = null;
+                gotReqHead = gotReqBody = gotResHead = false;
+                IncomingHead.OnCollect += PushIncoming;
+                excess.Burst(IncomingHead);
+                if (!gotReqHead) Base.Pipe(IncomingHead);
             }
-            BodySerializer.Unpipe();
-            WaitHead();
-            return true;
+        }
+        private void PushIncoming(RequestHead head)
+        {
+            lock (Sync)
+            {
+                gotReqHead = true;
+
+                BodyType? type = BodyType.TryDetectFor(head, true);
+                if (type == null) { Terminate(); return; }
+                if (!IncomingBody.TrySetFor(type.Value)) { Terminate(); return; }
+
+                IncomingRequest incoming = _Incoming = new IncomingRequest(this, head);
+                OutgoingResponse outgoing = _Outgoing = new OutgoingResponse(this, head.Version);
+
+                RequestHandler(incoming, outgoing);
+                if (Ended || Frozen) return;
+
+                if (!IncomingBody.Finished)
+                {
+                    IncomingBody.Pipe(_Incoming);
+                    IncomingBody.OnFinish += FinishIncomingMessage;
+                    excess.Burst(IncomingBody);
+                    if (!gotReqBody) Base.Pipe(IncomingBody);
+                }
+            }
+        }
+        private void FinishIncomingMessage()
+        {
+            lock (Sync)
+            {
+                gotReqBody = true;
+                IncomingBody.OnFinish -= FinishIncomingMessage;
+                IncomingBody.Unpipe();
+                _Incoming.Finish();
+                Base.Unpipe();
+            }
+        }
+        public override bool StartOutgoing(ResponseHead head)
+        {
+            lock (Sync)
+            {
+                if (!gotReqHead) return false;
+
+                BodyType? type = BodyType.TryDetectFor(head, true);
+                if (type == null) return false;
+                if (!OutgoingBody.TrySetFor(type.Value)) return false;
+
+                OutgoingHead.Write(head);
+                OutgoingHead.Burst(Base);
+
+                if (!OutgoingBody.Finished)
+                {
+                    hasResBody = true;
+                    OutgoingBody.OnFinish += FinishOutgoingMessage;
+                    OutgoingBody.Pipe(Base);
+                    _Outgoing.Pipe(OutgoingBody);
+                }
+                return gotResHead = true;
+            }
+        }
+        public override bool FinishOutgoing()
+        {
+            lock (Sync)
+            {
+                if (!gotResHead) return false;
+                OutgoingBody.OnFinish -= FinishOutgoingMessage;
+                if (!OutgoingBody.Finished) OutgoingBody.Finish();
+                OutgoingBody.Unpipe();
+                _Outgoing.Finish();
+                _Incoming = null;
+                _Outgoing = null;
+                WaitIncoming();
+                return !(hasResBody = false);
+            }
+        }
+        private void FinishOutgoingMessage()
+        {
+            if (!FinishOutgoing()) Terminate();
+        }
+        private void OnSegmentFail() => Terminate();
+        public override byte[] Freeze()
+        {
+            lock (Sync)
+            {
+                _Incoming = null; _Outgoing = null; Frozen = true;
+                gotReqHead = gotReqBody = gotResHead = hasResBody = false;
+                Base.Unpipe();
+                IncomingHead.Unpipe();
+                IncomingHead.OnFail -= OnSegmentFail;
+                if (!gotReqHead) IncomingHead.OnCollect -= PushIncoming;
+                IncomingBody.Unpipe();
+                IncomingBody.Excess.Unpipe();
+                IncomingBody.OnFail -= OnSegmentFail;
+                if (!gotReqBody) IncomingBody.OnFinish -= FinishIncomingMessage;
+                OutgoingHead.Unpipe();
+                OutgoingHead.OnFail -= OnSegmentFail;
+                OutgoingBody.Unpipe();
+                OutgoingBody.OnFail -= OnSegmentFail;
+                if (!hasResBody) OutgoingBody.OnFinish -= FinishOutgoingMessage;
+                return excess.Read();
+            }
         }
 
-        public override bool Freeze()
+        public override bool End()
         {
-            HeadParser.OnFail -= _terminate;
-            BodyParser.OnFail -= _terminate;
-            if (!hasReqHead) HeadParser.OnOutput -= OnReqHead;
-            if (hasReqHead && !hasReqBody) BodyParser.OnFinish -= OnReqBodyFinish;
-            if (hasResHead && !hasResBody) BodySerializer.OnFinish -= finishResponse;
-            HeadParser.Unpipe();
-            HeadSerializer.Unpipe();
-            BodyParser.Unpipe();
-            BodySerializer.Unpipe();
-            hasReqHead = hasReqBody = hasResHead = hasResBody = false;
-            return true;
-        }
-        public override bool Abandon()
-        {
-            Freeze();
-            CurrentMessage?.req.buffer.End();
-            CurrentMessage?.res.buffer.End();
-            CurrentMessage = null;
-            Base.Unpipe();
-            HeadParser.End();
-            HeadSerializer.End();
-            BodyParser.End();
-            BodySerializer.End();
-            return true;
+            lock (Sync)
+            {
+                if (Ended) return false;
+                if (!Frozen) Freeze();
+                return Ended = true;
+            }
         }
     }
 }

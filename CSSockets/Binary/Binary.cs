@@ -28,28 +28,28 @@ namespace CSSockets.Binary
         public long ReadInt64BE() => (long)BinaryConversion.GetBE(NonBlockingRead(8));
         public long ReadInt64LE() => (long)BinaryConversion.GetLE(NonBlockingRead(8));
 
-        public ulong ReadUIntBE(byte bitSize) => BinaryConversion.GetBE(NonBlockingRead(bitSize / 8u));
-        public ulong ReadUIntLE(byte bitSize) => BinaryConversion.GetLE(NonBlockingRead(bitSize / 8u));
-        public long ReadIntBE(byte bitSize) => BinaryConversion.ToSignedBE(BinaryConversion.GetBE(NonBlockingRead(bitSize / 8u)), bitSize);
-        public long ReadIntLE(byte bitSize) => BinaryConversion.ToSignedLE(BinaryConversion.GetLE(NonBlockingRead(bitSize / 8u)), bitSize);
+        public ulong ReadUIntBE(byte size) => BinaryConversion.GetBE(NonBlockingRead(size / 8u));
+        public ulong ReadUIntLE(byte size) => BinaryConversion.GetLE(NonBlockingRead(size / 8u));
+        public long ReadIntBE(byte size) => BinaryConversion.ToSignedBE(BinaryConversion.GetBE(NonBlockingRead(size / 8u)), size);
+        public long ReadIntLE(byte size) => BinaryConversion.ToSignedLE(BinaryConversion.GetLE(NonBlockingRead(size / 8u)), size);
 
         public float ReadFloat32BE() => new BinaryConversion.IntFloat32(ReadInt32BE()).Float;
         public float ReadFloat32LE() => new BinaryConversion.IntFloat32(ReadInt32LE()).Float;
         public double ReadFloat64BE() => new BinaryConversion.IntFloat64(ReadInt64BE()).Float;
         public double ReadFloat64LE() => new BinaryConversion.IntFloat64(ReadInt64LE()).Float;
 
-        public string ReadString(Encoding encoding, ulong length)
-            => encoding.GetString(NonBlockingRead(length));
+        public string ReadString(Encoding encoding, ulong length, byte size) => encoding.GetString(NonBlockingRead(length * (size / 8u)));
 
         public string ReadStringUnicodeBEZT() => ReadStringZT(Encoding.BigEndianUnicode, 16);
         public string ReadStringUnicodeLEZT() => ReadStringZT(Encoding.Unicode, 16);
         public string ReadStringUTF8ZT() => ReadStringZT(Encoding.UTF8, 8);
-        public string ReadStringZT(Encoding encoding, byte charSize)
+        public string ReadStringZT(Encoding encoding, byte size)
         {
             PrimitiveBuffer buffer = new PrimitiveBuffer();
+            ulong block = size / 8u;
             while (true)
             {
-                byte[] read = NonBlockingUnsafeRead(charSize / 8u);
+                byte[] read = NonBlockingUnsafeRead(block);
                 if (read == null || read.All((v) => v == 0)) break;
                 buffer.Write(read);
             }
@@ -80,7 +80,7 @@ namespace CSSockets.Binary
     public sealed class MemoryReader : Reader
     {
         public byte[] Data { get; }
-        private readonly object sync = new object();
+        private readonly object Sync = new object();
         private ulong size;
         private ulong offset = 0;
 
@@ -93,7 +93,7 @@ namespace CSSockets.Binary
 
         protected sealed override byte[] NonBlockingUnsafeRead(ulong length)
         {
-            lock (sync)
+            lock (Sync)
             {
                 if (offset + length > size) return null;
                 return PrimitiveBuffer.Slice(Data, offset - length, offset += length);
@@ -101,7 +101,7 @@ namespace CSSockets.Binary
         }
         protected sealed override byte[] NonBlockingRead(ulong length)
         {
-            lock (sync)
+            lock (Sync)
             {
                 if (offset + length > size) throw new IndexOutOfRangeException("Reached end of memory");
                 return PrimitiveBuffer.Slice(Data, offset - length, offset += length);
@@ -133,10 +133,10 @@ namespace CSSockets.Binary
         public bool WriteInt64BE(long value) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, 8));
         public bool WriteInt64LE(long value) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, 8));
 
-        public bool WriteUIntBE(ulong value, byte bitSize) => Stream.Write(BinaryConversion.SerializeBE(value, bitSize / 8));
-        public bool WriteUIntLE(ulong value, byte bitSize) => Stream.Write(BinaryConversion.SerializeLE(value, bitSize / 8));
-        public bool WriteIntBE(long value, byte bitSize) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, bitSize / 8));
-        public bool WriteIntLE(long value, byte bitSize) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, bitSize / 8));
+        public bool WriteUIntBE(ulong value, byte size) => Stream.Write(BinaryConversion.SerializeBE(value, size / 8));
+        public bool WriteUIntLE(ulong value, byte size) => Stream.Write(BinaryConversion.SerializeLE(value, size / 8));
+        public bool WriteIntBE(long value, byte size) => Stream.Write(BinaryConversion.SerializeBE((ulong)value, size / 8));
+        public bool WriteIntLE(long value, byte size) => Stream.Write(BinaryConversion.SerializeLE((ulong)value, size / 8));
 
         public bool WriteFloat32BE(float value) => Stream.Write(BinaryConversion.SerializeBE((ulong)new BinaryConversion.IntFloat32(value).Integer, 4));
         public bool WriteFloat32LE(float value) => Stream.Write(BinaryConversion.SerializeLE((ulong)new BinaryConversion.IntFloat32(value).Integer, 4));
@@ -146,10 +146,6 @@ namespace CSSockets.Binary
         public bool WriteStringUTF8(string value) => WriteString(value, Encoding.UTF8);
         public bool WriteStringUnicodeBE(string value) => WriteString(value, Encoding.BigEndianUnicode);
         public bool WriteStringUnicodeLE(string value) => WriteString(value, Encoding.Unicode);
-        public bool WriteString(string value, Encoding encoding)
-        {
-            byte[] data = encoding.GetBytes(value);
-            return Stream.Write(data);
-        }
+        public bool WriteString(string value, Encoding encoding) => Stream.Write(encoding.GetBytes(value));
     }
 }

@@ -1,125 +1,138 @@
-﻿using System;
-using CSSockets.Streams;
-using CSSockets.Http.Base;
-using CSSockets.Http.Structures;
+﻿using CSSockets.Streams;
+using CSSockets.Http.Definition;
 
 namespace CSSockets.Http.Reference
 {
-    public class ResponseHead : Head
+    public sealed class ResponseHead : Head
     {
-        public ushort? StatusCode { get; set; } = 200;
-        public string StatusDescription { get; set; } = "OK";
-    }
+        public ushort StatusCode { get; set; }
+        public string StatusDescription { get; set; }
 
-    public class ResponseHeadParser : HeadParser<ResponseHead>
-    {
-        private enum ParserState : byte
+        public ResponseHead() : base() { }
+        public ResponseHead(Version version, ushort statusCode, string statusDescription) : base(version)
         {
-            Version = 1,
-            StatusCode = 2,
-            StatusDescription = 3,
-            FirstLf = 4,
-            HeaderName = 5,
-            HeaderValue = 6,
-            HeaderLf = 7,
-            Lf = 8
+            StatusCode = statusCode;
+            StatusDescription = statusDescription;
         }
-        private ParserState state = ParserState.Version;
-
-        protected override bool TryContinue(byte[] data)
+        public ResponseHead(Version version, ushort statusCode, string statusDescription, HeaderCollection headers) : base(version, headers)
         {
-            bool run = true;
-            ulong i = 0, l = (ulong)data.LongLength;
-            for (; i < l && run; i++)
+            StatusCode = statusCode;
+            StatusDescription = statusDescription;
+        }
+    }
+    public sealed class ResponseHeadSerializer : HeadSerializer<ResponseHead>
+    {
+        public override bool Write(ResponseHead source)
+        {
+            string stringified = source.Version + WS + source.StatusCode + WS + source.StatusDescription + CRLF;
+            for (int i = 0; i < source.Headers.Length; i++)
+                stringified += source.Headers[i].Key.ToLower() + COLON + WS + source.Headers[i].Value + CRLF;
+            stringified += CRLF;
+            return HandleReadable(System.Text.Encoding.ASCII.GetBytes(stringified));
+        }
+    }
+    public sealed class ResponseHeadParser : HeadParser<ResponseHead>
+    {
+        private enum ParseState : byte
+        {
+            Version,
+            StatusCode,
+            StatusDescription,
+            FirstLf,
+            HeaderName,
+            HeaderValue,
+            HeaderLf,
+            Lf
+        }
+
+        private ParseState State = ParseState.Version;
+        public bool Malformed { get; private set; } = false;
+
+        public ResponseHeadParser() => Reset();
+
+        private string IncomingVersion;
+        private Version IncomingVersionValue;
+        private string IncomingStatusCode;
+        private string IncomingStatusDescription;
+        private HeaderCollection IncomingHeaders;
+        private string IncomingHeaderName;
+        private string IncomingHeaderValue;
+
+        public bool Reset()
+        {
+            lock (Sync)
             {
-                char c = (char)data[i];
-                switch (state)
+                Malformed = false;
+                State = ParseState.Version;
+                IncomingVersion = "";
+                IncomingVersionValue = default(Version);
+                IncomingStatusCode = "";
+                IncomingStatusDescription = "";
+                IncomingHeaders = new HeaderCollection();
+                IncomingHeaderName = "";
+                IncomingHeaderValue = "";
+                return true;
+            }
+        }
+        protected override bool HandleWritable(byte[] source)
+        {
+            if (Malformed) return false;
+            ulong i = 0, sourceLength = (ulong)source.LongLength;
+            for (char c; i < sourceLength; i++)
+            {
+                c = (char)source[i];
+                switch (State)
                 {
-                    case ParserState.Version:
-                        if (c != WHITESPACE) CsQueue.Append(c);
+                    case ParseState.Version:
+                        if (c != WS) IncomingVersion += c;
                         else
                         {
-                            if (!Structures.Version.TryParse(CsQueue.Next(), out Structures.Version result))
-                                return (Malformed = true) && !End();
-                            Current.Version = result;
-                            CsQueue.New();
-                            state = ParserState.StatusCode;
+                            if (!Version.TryParse(IncomingVersion, out Version result))
+                                return !(Malformed = true);
+                            IncomingVersionValue = result;
+                            State = ParseState.StatusCode;
                         }
                         break;
-                    case ParserState.StatusCode:
-                        if (c != WHITESPACE) CsQueue.Append(c);
+                    case ParseState.StatusCode:
+                        if (c == WS) State = ParseState.StatusDescription;
+                        else if (char.IsDigit(c)) IncomingStatusCode += c;
+                        else return !(Malformed = true);
+                        break;
+                    case ParseState.StatusDescription:
+                        if (c != CR) IncomingStatusDescription += c;
+                        else State = ParseState.FirstLf;
+                        break;
+                    case ParseState.FirstLf:
+                        if (c != LF) return !(Malformed = true);
+                        State = ParseState.HeaderName;
+                        break;
+                    case ParseState.HeaderName:
+                        if (c == CR) State = ParseState.Lf;
+                        else if (c != COLON) IncomingHeaderName += c;
+                        else State = ParseState.HeaderValue;
+                        break;
+                    case ParseState.HeaderValue:
+                        if (c != CR) IncomingHeaderValue += c;
                         else
                         {
-                            if (!ushort.TryParse(CsQueue.Next(), out ushort result))
-                                return (Malformed = true) && !End();
-                            Current.StatusCode = result;
-                            CsQueue.New();
-                            state = ParserState.StatusDescription;
+                            IncomingHeaders.Add(IncomingHeaderName, IncomingHeaderValue.TrimStart());
+                            IncomingHeaderName = "";
+                            IncomingHeaderValue = "";
+                            State = ParseState.HeaderLf;
                         }
                         break;
-                    case ParserState.StatusDescription:
-                        if (c != CR) CsQueue.Append(c);
-                        else
-                        {
-                            Current.StatusDescription = CsQueue.Next();
-                            CsQueue.New();
-                            state = ParserState.FirstLf;
-                        }
+                    case ParseState.HeaderLf:
+                        if (c != LF) return !(Malformed = true);
+                        else State = ParseState.HeaderName;
                         break;
-                    case ParserState.FirstLf:
-                        if (c != LF)
-                            return (Malformed = true) && !End();
-                        state = ParserState.HeaderName;
-                        break;
-                    case ParserState.HeaderName:
-                        if (c == CR) state = ParserState.Lf;
-                        else if (c != COLON) CsQueue.Append(c);
-                        else
-                        {
-                            CsQueue.New();
-                            state = ParserState.HeaderValue;
-                        }
-                        break;
-                    case ParserState.HeaderValue:
-                        if (c != CR) CsQueue.Append(c);
-                        else
-                        {
-                            Current.Headers.Set(CsQueue.Next(), CsQueue.Next().Trim());
-                            state = ParserState.HeaderLf;
-                        }
-                        break;
-                    case ParserState.HeaderLf:
-                        if (c != LF)
-                            return (Malformed = true) && !End();
-                        else
-                        {
-                            CsQueue.New();
-                            state = ParserState.HeaderName;
-                        }
-                        break;
-                    case ParserState.Lf:
-                        if (c != LF)
-                            return (Malformed = true) && !End();
-                        run = false;
-                        Push();
-                        state = ParserState.Version;
-                        break;
+                    case ParseState.Lf:
+                        if (c != LF) return !(Malformed = true);
+                        HandleReadable(PrimitiveBuffer.Slice(source, i + 1, sourceLength));
+                        Pickup(new ResponseHead(IncomingVersionValue, ushort.Parse(IncomingStatusCode), IncomingStatusDescription, IncomingHeaders));
+                        return Reset();
                 }
             }
-            Bhandle(PrimitiveBuffer.Slice(data, i, l));
             return true;
-        }
-    }
-    public class ResponseHeadSerializer : HeadSerializer<ResponseHead>
-    {
-        protected override string Stringify(ResponseHead head)
-        {
-            string s = (head.Version.ToString() ?? throw new ArgumentException("Version cannot be null")) + WHITESPACE +
-                (head.StatusCode ?? throw new ArgumentException("StatusCode cannot be null")) + WHITESPACE +
-                (head.StatusDescription?.ToString() ?? throw new ArgumentException("StatusDescription cannot be null")) + CR + LF;
-            if (head.Headers == null) throw new ArgumentException("Headers cannot be null");
-            foreach (Header h in head.Headers) s += h.Name + COLON + WHITESPACE + h.Value + CR + LF;
-            return s + CR + LF;
         }
     }
 }

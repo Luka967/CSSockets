@@ -3,139 +3,93 @@ using System.IO.Compression;
 
 namespace CSSockets.Streams
 {
-    public abstract class CompressorDuplex : UnifiedDuplex, IFinishable
+    public class Compressor<T> : Duplex, IFinishable where T : Stream
     {
-        protected readonly MemoryStream Cbuffer = new MemoryStream();
-        protected Stream Cstream;
-        public CompressionLevel Level { get; }
+        protected readonly SimpleStream Backstore = new SimpleStream();
+        protected T Transformer;
+        public CompressionLevel CompressionLevel { get; }
         public bool Finished { get; private set; } = false;
 
-        public CompressorDuplex(CompressionLevel level) => Level = level;
+        protected Compressor(CompressionLevel compressionLevel) => CompressionLevel = compressionLevel;
 
-        protected bool Coutput()
+        protected bool PipeTransformer()
         {
-            lock (Rlock) lock (Wlock)
-                {
-                    Bhandle(Cbuffer.Pbuffer.Read(Cbuffer.Pbuffer.Length));
-                    return true;
-                }
+            byte[] ret = new byte[Backstore.Length];
+            Backstore.Read(ret, 0, (int)Backstore.Length);
+            return HandleReadable(ret);
         }
-
-        public override bool Write(byte[] source)
+        protected override bool HandleWritable(byte[] source)
         {
-            lock (Wlock)
-            {
-                if (Ended) return false;
-                if (Finished) return false;
-                Cstream.Write(source, 0, source.Length);
-                return Coutput();
-            }
+            if (Finished) throw new System.ObjectDisposedException("Stream has ended", null as System.Exception);
+            Transformer.Write(source, 0, source.Length);
+            return PipeTransformer();
         }
-        public override bool Write(byte[] source, ulong start, ulong end)
-            => Write(PrimitiveBuffer.Slice(source, start, end));
-
-        public override byte[] Read() => Bread();
-        public override ulong Read(byte[] destination) => Bread(destination);
-        public override byte[] Read(ulong length) => Bread(length);
 
         public bool Finish()
         {
-            lock (Rlock) lock (Wlock)
-                {
-                    if (Finished) return false;
-                    Finished = true;
-                    Cstream.Dispose();
-                    bool result = Coutput();
-                    Cbuffer.Dispose();
-                    return result;
-                }
-        }
-        public override bool End()
-        {
-            lock (Rlock) lock (Wlock)
-                {
-                    if (!Finished) Finish();
-                    return base.End();
-                }
-        }
-    }
-    public class DeflateCompressor : CompressorDuplex
-    {
-        public DeflateCompressor(CompressionLevel level) : base(level) => Cstream = new DeflateStream(Cbuffer, level, true);
-    }
-    public class GzipCompressor : CompressorDuplex
-    {
-        public GzipCompressor(CompressionLevel level) : base(level) => Cstream = new GZipStream(Cbuffer, level, true);
-    }
-
-    public abstract class DecompressorDuplex : UnifiedDuplex, IFinishable
-    {
-        public const int DEFAULT_BUFFER_SIZE = 1024;
-
-        protected readonly MemoryStream Cbuffer = new MemoryStream();
-        protected Stream Cstream;
-        public bool Finished { get; private set; } = false;
-        public ulong BufferSize { get; set; } = DEFAULT_BUFFER_SIZE;
-
-        protected bool Coutput()
-        {
-            lock (Rlock) lock (Wlock)
-                {
-                    byte[] data = new byte[BufferSize]; int read;
-                    while (true)
-                    {
-                        try { read = Cstream.Read(data, 0, data.Length); }
-                        catch (InvalidDataException) { return false; }
-                        if (read == 0) break;
-                        Bhandle(PrimitiveBuffer.Slice(data, 0, read));
-                    }
-                    return true;
-                }
-        }
-
-        public override bool Write(byte[] source)
-        {
-            lock (Wlock)
+            lock (Sync)
             {
-                if (Ended) return false;
                 if (Finished) return false;
-                Cbuffer.Write(source, 0, source.Length);
-                return Coutput();
+                Transformer.Dispose();
+                PipeTransformer();
+                Backstore.Dispose();
+                return Finished = true;
             }
         }
-        public override bool Write(byte[] source, ulong start, ulong end)
-            => Write(PrimitiveBuffer.Slice(source, start, end));
+    }
+    public class DeflateCompressor : Compressor<DeflateStream>
+    {
+        public DeflateCompressor(CompressionLevel compressionLevel = CompressionLevel.Optimal) : base(compressionLevel)
+            => Transformer = new DeflateStream(Backstore, compressionLevel);
+    }
+    public class GzipCompressor : Compressor<GZipStream>
+    {
+        public GzipCompressor(CompressionLevel compressionLevel = CompressionLevel.Optimal) : base(compressionLevel)
+            => Transformer = new GZipStream(Backstore, compressionLevel);
+    }
 
-        public override byte[] Read() => Bread();
-        public override ulong Read(byte[] destination) => Bread(destination);
-        public override byte[] Read(ulong length) => Bread(length);
+    public class Decompressor<T> : Duplex, IFinishable where T : Stream
+    {
+        public const int TRANSFER_SIZE_DEFAULT = 1024;
+
+        protected readonly SimpleStream Backstore = new SimpleStream();
+        protected T Transformer;
+        public int TransferSize { get; set; }
+        public bool Finished { get; private set; } = false;
+
+        protected Decompressor(int transferSize) => TransferSize = transferSize;
+
+        protected bool PipeTransformer()
+        {
+            byte[] ret = new byte[TransferSize]; int len;
+            while ((len = Transformer.Read(ret, 0, ret.Length)) > 0)
+                if (!HandleReadable(PrimitiveBuffer.Slice(ret, 0, len))) return false;
+            return true;
+        }
+        protected override bool HandleWritable(byte[] source)
+        {
+            if (Finished) throw new System.ObjectDisposedException("Stream has ended", null as System.Exception);
+            Backstore.Write(source, 0, source.Length);
+            return PipeTransformer();
+        }
 
         public bool Finish()
         {
-            lock (Rlock) lock (Wlock)
-                {
-                    if (Finished) return false;
-                    Finished = true;
-                    Cstream.Dispose();
-                    Cbuffer.Dispose();
-                    return true;
-                }
-        }
-        public override bool End()
-        {
-            lock (Rlock) lock (Wlock)
-                {
-                    if (!Finished) Finish();
-                    return base.End();
-                }
+            lock (Sync)
+            {
+                if (Finished) return false;
+                Transformer.Dispose();
+                Backstore.Dispose();
+                return Finished = true;
+            }
         }
     }
-    public class DeflateDecompressor : DecompressorDuplex
+    public class DeflateDecompressor : Decompressor<DeflateStream>
     {
-        public DeflateDecompressor() => Cstream = new DeflateStream(Cbuffer, CompressionMode.Decompress, true);
+        public DeflateDecompressor(int transferSize = TRANSFER_SIZE_DEFAULT) : base(transferSize) => Transformer = new DeflateStream(Backstore, CompressionMode.Decompress);
     }
-    public class GzipDecompressor : DecompressorDuplex
+    public class GzipDecompressor : Decompressor<GZipStream>
     {
-        public GzipDecompressor() => Cstream = new GZipStream(Cbuffer, CompressionMode.Decompress, true);
+        public GzipDecompressor(int transferSize = TRANSFER_SIZE_DEFAULT) : base(transferSize) => Transformer = new GZipStream(Backstore, CompressionMode.Decompress);
     }
 }

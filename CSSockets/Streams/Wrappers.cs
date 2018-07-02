@@ -1,153 +1,305 @@
-﻿namespace CSSockets.Streams
+﻿using System;
+using System.IO;
+
+namespace CSSockets.Streams
 {
-    public class BaseReadable<TReadable> : IBufferedReadable
-        where TReadable : UnifiedDuplex, new()
+    public sealed class SimpleStream : Stream
     {
-        protected readonly TReadable Readable = new TReadable();
+        private readonly PrimitiveBuffer Buffer = new PrimitiveBuffer();
+        private readonly object Sync = new object();
 
-        public bool Ended => Readable.Ended;
-        public bool IsPaused => Readable.IsPaused;
-        public ulong ReadCount => Readable.WriteCount;
-        public IWritable PipedTo => Readable.PipedTo;
-        public ulong BufferedReadable => Readable.Buffered;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => (long)Buffer.Length;
+        public override long Position { get => 0; set => throw new InvalidOperationException("Cannot seek"); }
 
-        public virtual event DataHandler OnData
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count)
         {
-            add => Readable.OnData += value;
-            remove => Readable.OnData -= value;
-        }
-        public virtual event ControlHandler OnFail
-        {
-            add => Readable.OnFail += value;
-            remove => Readable.OnFail -= value;
-        }
-        public virtual event ControlHandler OnEnd
-        {
-            add => Readable.OnEnd += value;
-            remove => Readable.OnEnd -= value;
-        }
-
-        public virtual bool Pause() => Readable.Pause();
-        public virtual bool Resume() => Readable.Resume();
-        public virtual bool Pipe(IWritable to) => Readable.Pipe(to);
-        public virtual bool Unpipe() => Readable.Unpipe();
-        public virtual byte[] Read() => Readable.Read();
-        public virtual byte[] Read(ulong length) => Readable.Read(length);
-        public virtual ulong Read(byte[] destination) => Readable.Read(destination);
-        public virtual bool End() => Readable.End();
-    }
-    public abstract class BaseReadable : BaseReadable<MemoryDuplex> { }
-
-    public abstract class BaseWritable<TWritable> : IBufferedWritable
-        where TWritable : UnifiedDuplex, new()
-    {
-        protected readonly TWritable Writable = new TWritable();
-        protected readonly object Wlock = new object();
-
-        public BaseWritable() => Writable.OnData += HandleData;
-
-        public bool Ended => Writable.Ended;
-        public bool IsCorked => Writable.IsPaused;
-        public ulong WriteCount => Writable.WriteCount;
-        public ulong BufferedWritable => Writable.Buffered;
-
-        public virtual event ControlHandler OnEnd
-        {
-            add => Writable.OnEnd += value;
-            remove => Writable.OnEnd -= value;
-        }
-        public virtual event ControlHandler OnDrain
-        {
-            add => Writable.OnDrain += value;
-            remove => Writable.OnDrain -= value;
-        }
-
-        protected abstract void HandleData(byte[] data);
-
-        public virtual bool Cork() => Writable.Pause();
-        public virtual bool Uncork() => Writable.Resume();
-        public virtual bool End() => Writable.End();
-        public virtual bool Unpipe(IReadable from) => Writable.Unpipe(from);
-        public virtual bool Write(byte[] source) => Writable.Write(source);
-        public virtual bool Write(byte[] source, ulong start, ulong end) => Writable.Write(source, start, end);
-    }
-    public abstract class BaseWritable : BaseWritable<MemoryDuplex> { }
-
-    public abstract class BaseDuplex<TReadable, TWritable> : IBufferedDuplex
-        where TReadable : UnifiedDuplex, new()
-        where TWritable : UnifiedDuplex, new()
-    {
-        protected readonly TReadable Readable = new TReadable();
-        protected readonly TWritable Writable = new TWritable();
-        protected readonly object EndLock = new object();
-
-        public bool ReadableEnded => Readable.Ended;
-        public bool WritableEnded => Writable.Ended;
-        public bool Ended => Readable.Ended && Writable.Ended;
-        public bool IsPaused => Readable.IsPaused;
-        public bool IsCorked => Writable.IsPaused;
-        public IWritable PipedTo => Readable.PipedTo;
-        public ulong ReadCount => Readable.WriteCount;
-        public ulong WriteCount => Writable.WriteCount;
-        public ulong BufferedReadable => Readable.Buffered;
-        public ulong BufferedWritable => Writable.Buffered;
-
-        public virtual event ControlHandler OnEnd;
-        public virtual event DataHandler OnData
-        {
-            add => Readable.OnData += value;
-            remove => Readable.OnData -= value;
-        }
-        public virtual event ControlHandler OnFail
-        {
-            add => Readable.OnFail += value;
-            remove => Readable.OnFail -= value;
-        }
-        public virtual event ControlHandler OnDrain
-        {
-            add => Writable.OnDrain += value;
-            remove => Writable.OnDrain -= value;
-        }
-
-        public virtual bool Pause() => Readable.Pause();
-        public virtual bool Resume() => Readable.Resume();
-        public virtual bool Pipe(IWritable to) => Readable.Pipe(to);
-        public virtual bool Unpipe() => Readable.Unpipe();
-        public virtual bool Cork() => Writable.Pause();
-        public virtual bool Uncork() => Writable.Resume();
-        public virtual bool Unpipe(IReadable from) => Writable.Unpipe(from);
-        public abstract byte[] Read();
-        public abstract byte[] Read(ulong length);
-        public abstract ulong Read(byte[] destination);
-        public abstract bool Write(byte[] source);
-        public abstract bool Write(byte[] source, ulong start, ulong end);
-
-        protected bool EndHasListeners => OnEnd != null;
-        protected void FireEnd() => OnEnd?.Invoke();
-        protected virtual bool EndReadable()
-        {
-            lock (EndLock)
+            lock (Sync)
             {
-                if (Readable.Ended) return false;
-                Readable.End();
-                if (Writable.Ended) OnEnd?.Invoke();
+                int reading = Math.Min((int)Length, count);
+                Buffer.Read(buffer, (ulong)reading, (uint)offset);
+                return reading;
+            }
+        }
+        public override long Seek(long offset, SeekOrigin origin)
+            => throw new InvalidOperationException("Cannot seek");
+        public override void SetLength(long value)
+            => throw new InvalidOperationException("Cannot set length");
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            lock (Sync) Buffer.Write(PrimitiveBuffer.Slice(buffer, offset, offset + count));
+        }
+    }
+    public abstract class Readable : IReadable
+    {
+        protected readonly PrimitiveBuffer Buffer = new PrimitiveBuffer();
+        protected readonly object Sync = new object();
+
+        public IWritable PipedTo { get; private set; } = null;
+        public ulong ReadCount { get; private set; } = 0;
+        public ulong BufferedReadable => Buffer.Length;
+
+        protected event DataHandler _OnData;
+        public virtual event DataHandler OnData
+        {
+            add
+            {
+                lock (Sync)
+                {
+                    _OnData += value;
+                    if (BufferedReadable > 0) HandleReadable(Read());
+                }
+            }
+            remove
+            {
+                lock (Sync) _OnData -= value;
+            }
+        }
+        public virtual event ControlHandler OnFail;
+
+        public virtual bool Pipe(IWritable to)
+        {
+            lock (Sync)
+            {
+                if (to == null) return false;
+                PipedTo = to;
+                if (BufferedReadable > 0) HandleReadable(Read());
                 return true;
             }
         }
-        protected virtual bool EndWritable()
+        public virtual bool Burst(IWritable to)
         {
-            lock (EndLock)
+            lock (Sync)
             {
-                if (Writable.Ended) return false;
-                Writable.End();
-                if (Readable.Ended) OnEnd?.Invoke();
+                if (to == null) return false;
+                if (BufferedReadable > 0) return to.Write(Read());
                 return true;
             }
         }
-        public virtual bool End()
+        public virtual bool Unpipe()
         {
-            lock (EndLock) return EndReadable() | EndWritable();
+            lock (Sync)
+            {
+                PipedTo = null;
+                return true;
+            }
+        }
+
+        protected bool HandleReadable(byte[] source)
+        {
+            lock (Sync)
+            {
+                if (PipedTo != null)
+                {
+                    if (!PipedTo.Write(source)) OnFail?.Invoke();
+                    return true;
+                }
+                if (_OnData != null) { _OnData(source); return true; }
+                return Buffer.Write(source);
+            }
+        }
+        public virtual ulong Read(byte[] destination, ulong start = 0)
+        {
+            lock (Sync)
+            {
+                ulong length = BufferedReadable;
+                byte[] data = Buffer.Read(length);
+                PrimitiveBuffer.Copy(data, 0, destination, start, length);
+                ReadCount += length;
+                return length;
+            }
+        }
+        public virtual byte[] Read(ulong length)
+        {
+            lock (Sync)
+            {
+                ulong retLength = Math.Min(BufferedReadable, length);
+                if (retLength != length) return null;
+                ReadCount += retLength;
+                return Buffer.Read(length);
+            }
+        }
+        public virtual byte[] Read()
+        {
+            lock (Sync)
+            {
+                ReadCount += BufferedReadable;
+                return Buffer.Read(BufferedReadable);
+            }
         }
     }
-    public abstract class BaseDuplex : BaseDuplex<MemoryDuplex, MemoryDuplex> { }
+
+    public abstract class Writable : IWritable
+    {
+        protected readonly object Sync = new object();
+
+        public ulong WriteCount { get; private set; } = 0;
+
+        public virtual bool Unpipe(IReadable from)
+        {
+            lock (Sync) return from.PipedTo == this ? from.Unpipe() : false;
+        }
+
+        protected abstract bool HandleWritable(byte[] source);
+        public virtual bool Write(byte[] source)
+        {
+            lock (Sync) return HandleWritable(source);
+        }
+        public virtual bool Write(byte[] source, ulong start)
+            => Write(PrimitiveBuffer.Slice(source, start, (ulong)source.LongLength));
+        public virtual bool Write(byte[] source, ulong start, ulong end)
+            => Write(PrimitiveBuffer.Slice(source, start, end));
+    }
+
+    public abstract class Duplex : IDuplex
+    {
+        protected readonly PrimitiveBuffer Readable = new PrimitiveBuffer();
+        protected readonly object Sync = new object();
+
+        public IWritable PipedTo { get; private set; } = null;
+        public ulong ReadCount { get; private set; } = 0;
+        public ulong WriteCount { get; private set; } = 0;
+        public ulong BufferedReadable => Readable.Length;
+
+        protected event DataHandler _OnData;
+        public virtual event DataHandler OnData
+        {
+            add
+            {
+                lock (Sync)
+                {
+                    _OnData += value;
+                    if (BufferedReadable > 0) HandleReadable(Read());
+                }
+            }
+            remove
+            {
+                lock (Sync) _OnData -= value;
+            }
+        }
+        public virtual event ControlHandler OnFail;
+
+        public virtual bool Pipe(IWritable to)
+        {
+            lock (Sync)
+            {
+                if (to == null) return false;
+                PipedTo = to;
+                if (BufferedReadable > 0) HandleReadable(Read());
+                return true;
+            }
+        }
+        public virtual bool Burst(IWritable to)
+        {
+            lock (Sync)
+            {
+                if (to == null) return false;
+                if (BufferedReadable > 0) return to.Write(Read());
+                return true;
+            }
+        }
+        public virtual bool Unpipe()
+        {
+            lock (Sync)
+            {
+                PipedTo = null;
+                return true;
+            }
+        }
+        public virtual bool Unpipe(IReadable from)
+        {
+            lock (Sync) return from.PipedTo == this ? from.Unpipe() : false;
+        }
+
+        public virtual ulong Read(byte[] destination, ulong start = 0)
+        {
+            lock (Sync)
+            {
+                ulong length = Math.Min(BufferedReadable, (ulong)destination.LongLength);
+                byte[] data = Readable.Read(length);
+                PrimitiveBuffer.Copy(data, 0, destination, start, length);
+                ReadCount += length;
+                return length;
+            }
+        }
+        public virtual byte[] Read(ulong length)
+        {
+            lock (Sync)
+            {
+                ulong retLength = Math.Min(BufferedReadable, length);
+                if (retLength != length) return null;
+                ReadCount += retLength;
+                return Readable.Read(length);
+            }
+        }
+        public virtual byte[] Read()
+        {
+            lock (Sync)
+            {
+                ReadCount += BufferedReadable;
+                return Readable.Read(BufferedReadable);
+            }
+        }
+
+        protected bool HandleReadable(byte[] source)
+        {
+            lock (Sync)
+            {
+                if (PipedTo != null)
+                {
+                    if (!PipedTo.Write(source)) OnFail?.Invoke();
+                    return true;
+                }
+                if (_OnData != null) { _OnData(source); return true; }
+                return Readable.Write(source);
+            }
+        }
+        protected abstract bool HandleWritable(byte[] source);
+        public virtual bool Write(byte[] source)
+        {
+            lock (Sync) return HandleWritable(source);
+        }
+        public virtual bool Write(byte[] source, ulong start)
+            => Write(PrimitiveBuffer.Slice(source, start, (ulong)source.LongLength));
+        public virtual bool Write(byte[] source, ulong start, ulong end)
+            => Write(PrimitiveBuffer.Slice(source, start, end));
+    }
+
+    public abstract class Transform<T> : Readable, ITransform<T>
+    {
+        public abstract bool Write(T source);
+    }
+    public abstract class Collector<T> : Writable, ICollector<T>
+    {
+        public event OutputHandler<T> OnCollect;
+
+        protected bool Pickup(T item)
+        {
+            if (OnCollect != null) { OnCollect(item); return true; }
+            return false;
+        }
+    }
+    public abstract class Translator<T> : Duplex, ICollector<T>
+    {
+        public event OutputHandler<T> OnCollect;
+
+        protected bool Pickup(T item)
+        {
+            if (OnCollect != null) { OnCollect(item); return true; }
+            return false;
+        }
+    }
+
+    public class MemoryDuplex : Duplex
+    {
+        protected override bool HandleWritable(byte[] source) => HandleReadable(source);
+    }
+    public class VoidWritable : Writable
+    {
+        public static readonly VoidWritable Default = new VoidWritable();
+        protected override bool HandleWritable(byte[] source) => true;
+    }
 }

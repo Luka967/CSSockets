@@ -3,29 +3,23 @@ using System.Net.Sockets;
 
 namespace CSSockets.Tcp
 {
-    public delegate void SocketErrorHandler(SocketError error);
+    public delegate void SocketCodeHandler(SocketError error);
     public delegate void ConnectionHandler(Connection newConnection);
 
-    public enum WrapperType : byte
-    {
-        Unset = 0,
-        Server = 1,
-        Client = 2
-    }
     public enum WrapperState : byte
     {
-        Unset = 0,                  // no owner
-        Dormant = 1,                // no type
-        ServerDormant = 2,          // server, no bind
-        ServerBound = 3,            // server, has bind
-        ServerListening = 4,        // server, listening
-        ClientDormant = 5,          // client, no socket
-        ClientConnecting = 6,       // client, has socket, is connecting
-        ClientOpen = 7,             // client, has socket, can read/write
-        ClientReadonly = 8,         // client, has socket, can only read
-        ClientWriteonly = 9,        // client, has socket, can only write
-        ClientLastWrite = 10,       // client, has socket, writing from buffer
-        Destroyed = 11              // nothing available
+        Unset,                       // no owner
+        Dormant,                     // no type
+        ServerDormant,               // server, no bind
+        ServerBound,                 // server, has bind
+        ServerListening,             // server, listening
+        ClientDormant,               // client, no socket
+        ClientConnecting,            // client, has socket, is connecting
+        ClientOpen,                  // client, has socket, can read/write
+        ClientReadonly,              // client, has socket, can only read
+        ClientWriteonly,             // client, has socket, can only write
+        ClientLastWrite,             // client, has socket, emptyin buffer
+        Destroyed                    // nothing available
     }
 
     public enum OperationType : byte

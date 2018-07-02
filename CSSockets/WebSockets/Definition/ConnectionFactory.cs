@@ -15,7 +15,7 @@ namespace CSSockets.WebSockets.Definition
         {
             ClientConnection httpClient = new ClientConnection(connection);
             OutgoingRequest req = httpClient.Enqueue("HTTP/1.1", "GET", url);
-            TConnection webSocket = GenerateConnection(connection, req.Head);
+            TConnection newConnection = GenerateConnection(connection, req.Head);
 
             string reqExtensions = NegotiatingExtension.Stringify(RequestExtensions());
             string key = Secret.GenerateKey();
@@ -38,6 +38,7 @@ namespace CSSockets.WebSockets.Definition
                         if (reqSubprotocols[i] == subprotocol) { validSubprotocol = true; break; }
                     if (!validSubprotocol) { httpClient.Terminate(); return; }
                 }
+                newConnection.SetSubprotocol(subprotocol);
                 if (
                     !NegotiatingExtension.TryParse(res["Sec-WebSocket-Extensions"] ?? "", out NegotiatingExtension[] resExtensions)
                  || !CheckExtensions(resExtensions)
@@ -45,14 +46,15 @@ namespace CSSockets.WebSockets.Definition
 
                 byte[] trail = httpClient.Freeze();
                 if (!httpClient.End()) return;
-                webSocket.Initiate(trail, subprotocol);
+                newConnection.Initiate(trail);
             };
 
-            return req.End() ? webSocket : null;
+            return req.End() ? newConnection : null;
         }
         protected abstract TConnection GenerateConnection(Tcp.Connection connection, RequestHead req);
         protected virtual bool VerifyResponseHead(IncomingResponse res, string key)
         {
+            if (res.StatusCode != 101) return false;
             if (res["Connection"] != "Upgrade") return false;
             if (res["Upgrade"] != "websocket") return false;
             if (res["Sec-WebSocket-Version"] != "13") return false;

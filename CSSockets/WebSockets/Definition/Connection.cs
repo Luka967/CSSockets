@@ -32,11 +32,18 @@ namespace CSSockets.WebSockets.Definition
             Parser.OnCollect += OnParserCollect;
             Merger.OnCollect += OnMergerCollect;
         }
-        public bool Initiate(byte[] trail, string subprotocol)
+        public void SetSubprotocol(string subprotocol)
         {
-            if (Mode.FireOpen) OnOpen?.Invoke();
-            if (!Parser.Write(trail)) return false;
-            return Base.Pipe(Parser);
+            lock (Sync) Subprotocol = subprotocol;
+        }
+        public bool Initiate(byte[] trail)
+        {
+            lock (Sync)
+            {
+                if (Mode.FireOpen) OnOpen?.Invoke();
+                if (!Parser.Write(trail)) return false;
+                return Base.Pipe(Parser);
+            }
         }
 
         protected readonly FrameParser Parser = new FrameParser();
@@ -99,19 +106,12 @@ namespace CSSockets.WebSockets.Definition
                     case 1: OnString?.Invoke(Encoding.UTF8.GetString(message.Payload)); return true;
                     case 2: OnBinary?.Invoke(message.Payload); return true;
                     case 8:
-                        if (message.Length < 2)
-                        {
-                            FinishClose();
-                            return true;
-                        }
+                        if (message.Length < 2) { FinishClose(); return true; }
                         ushort code = (ushort)(message.Payload[0] * 256 + message.Payload[1]);
-                        if (SentClose)
-                        {
-                            if (message.Length > 2) return false;
-                            return FinishClose(code);
-                        }
                         string reason = Encoding.UTF8.GetString(PrimitiveBuffer.Slice(message.Payload, 2, message.Length));
-                        return FinishClose(code, reason);
+                        if (RecvClose && message.Length > 2) return false;
+                        if (message.Length > 2) return FinishClose(code, reason);
+                        return FinishClose(code);
                     case 9: OnPing?.Invoke(message.Payload); return true;
                     case 10: OnPong?.Invoke(message.Payload); return true;
                     default: return false;

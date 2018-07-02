@@ -39,10 +39,7 @@ namespace CSSockets.WebSockets.Primitive
         }
         protected override void OnMergerCollect(Message message)
         {
-            lock (Sync)
-            {
-                if (!HandleMessage(message)) Terminate(1002, "");
-            }
+            lock (Sync) if (!HandleMessage(message)) Terminate(1002, "");
         }
         protected override void OnParserCollect(Frame frame)
         {

@@ -15,8 +15,8 @@ namespace CSSockets.WebSockets.Definition
 
         protected readonly object Sync = new object();
         protected SHA1 Hasher;
-        protected ClientVerifier ClientVerifier = null;
-        protected SubprotocolChooser SubprotocolChooser = null;
+        public ClientVerifier ClientVerifier { get; set; } = null;
+        public SubprotocolChooser SubprotocolChooser { get; set; } = null;
 
         public Listener()
         {
@@ -56,7 +56,11 @@ namespace CSSockets.WebSockets.Definition
 
             string subprotocol = null;
             if (subprotocols.Length > 0 && SubprotocolChooser != null)
-                res["Sec-WebSocket-Protocol"] = subprotocol = SubprotocolChooser(remote, subprotocols, req.Head);
+            {
+                subprotocol = SubprotocolChooser(remote, subprotocols, req.Head);
+                if (subprotocol == null) DropRequest(res, 501, "Not Implemented");
+                res["Sec-WebSocket-Protocol"] = subprotocol;
+            }
             string respondedExtensions = NegotiatingExtension.Stringify(RespondExtensions(requestedExtensions));
             if (respondedExtensions.Length > 0)
                 res["Sec-WebSocket-Extensions"] = respondedExtensions;
@@ -78,9 +82,9 @@ namespace CSSockets.WebSockets.Definition
         protected bool DropRequest(OutgoingResponse res, ushort code, string reason, string asciiBody = null, params Header[] headers)
         {
             for (int i = 0; i < headers.Length; i++) res[headers[i].Key] = headers[i].Value;
-            res["Content-Length"] = asciiBody.Length.ToString();
+            res["Content-Length"] = asciiBody?.Length.ToString() ?? "0";
             res.SendHead(code, reason);
-            res.Write(Encoding.ASCII.GetBytes(asciiBody));
+            if (asciiBody != null) res.Write(Encoding.ASCII.GetBytes(asciiBody));
             return false;
         }
         protected bool CheckHeaders(IncomingRequest req, OutgoingResponse res)

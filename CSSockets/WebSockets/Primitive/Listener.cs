@@ -21,8 +21,9 @@ namespace CSSockets.WebSockets.Primitive
         protected override void FireConnection(Tcp.Connection connection, RequestHead req, string subprotocol, byte[] trail)
         {
             Connection newConnection = new Connection(connection, req, new Definition.Connection.ServerMode());
+            newConnection.SetSubprotocol(subprotocol);
             OnConnection?.Invoke(newConnection);
-            newConnection.Initiate(trail, subprotocol);
+            newConnection.Initiate(trail);
         }
     }
 }

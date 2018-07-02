@@ -12,6 +12,7 @@ using TcpListener = CSSockets.Tcp.Listener;
 using HttpListener = CSSockets.Http.Reference.Listener;
 using WebSocket = CSSockets.WebSockets.Primitive.Connection;
 using WebSocketListener = CSSockets.WebSockets.Primitive.Listener;
+using WebSocketFactory = CSSockets.WebSockets.Primitive.ConnectionFactory;
 
 namespace CSSockets.Tests
 {
@@ -19,17 +20,58 @@ namespace CSSockets.Tests
     {
         static void Main(string[] args)
         {
-            WebSocketServerTest(args);
+            WebSocketClientTest(args);
+        }
+
+        public static void WebSocketClientTest(string[] args)
+        {
+            IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, 420);
+            IPEndPoint clientEP = new IPEndPoint(IPAddress.Loopback, 420);
+            WebSocketListener listener = new WebSocketListener(serverEP);
+            WebSocket server = null;
+            WebSocket client = null;
+            listener.OnConnection += (connection) =>
+            {
+                server = connection;
+                Console.WriteLine("listener connection");
+                server.OnBinary += (data) => Console.WriteLine("SERVER BINARY {0}", data.LongLength);
+                server.OnString += (data) => Console.WriteLine("SERVER STRING {0}", data.Length);
+                server.OnClose += (code, reason) => Console.WriteLine("SERVER CLOSED {0} '{1}'", code, reason);
+                server.SendBinary(new byte[1]);
+                server.SendBinary(new byte[10]);
+                server.SendBinary(new byte[100]);
+            };
+            listener.Start();
+            Console.WriteLine("listener open");
+            Connection clientTcp = new Connection();
+            clientTcp.OnOpen += () =>
+            {
+                client = WebSocketFactory.Default.Generate(clientTcp, "/");
+                client.OnOpen += () =>
+                {
+                    client.OnBinary += (data) => Console.WriteLine("CLIENT BINARY {0}", data.LongLength);
+                    client.OnString += (data) => Console.WriteLine("CLIENT STRING {0}", data.Length);
+                    client.OnClose += (code, reason) => Console.WriteLine("CLIENT CLOSED {0} '{1}'", code, reason);
+                    client.SendBinary(new byte[1]);
+                    client.SendBinary(new byte[10]);
+                    client.SendBinary(new byte[100]);
+                };
+            };
+            clientTcp.Connect(clientEP);
+            Console.ReadKey();
+            client.SendClose(1000, "OK");
+            listener.Stop();
+            Console.ReadKey();
         }
 
         public static void WebSocketServerTest(string[] args)
         {
             IPEndPoint endPoint = new IPEndPoint(IPAddress.Any, 420);
             WebSocketListener server = new WebSocketListener(endPoint);
-            WebSocket reeee = null;
+            WebSocket client = null;
             server.OnConnection += (connection) =>
             {
-                reeee = connection;
+                client = connection;
                 Console.WriteLine("connection");
                 connection.OnBinary += (data) => Console.WriteLine("BINARY {0}", data.LongLength);
                 connection.OnString += (data) => Console.WriteLine("STRING {0}", data.Length);
@@ -41,7 +83,7 @@ namespace CSSockets.Tests
             Console.WriteLine("open");
             server.Start();
             Console.ReadKey();
-            reeee.SendClose(1000, "OK");
+            client.SendClose(1000, "OK");
             server.Stop();
             Console.ReadKey();
         }

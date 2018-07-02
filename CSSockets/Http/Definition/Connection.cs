@@ -14,6 +14,8 @@ namespace CSSockets.Http.Definition
         protected BodyParser IncomingBody;
         protected BodySerializer OutgoingBody;
 
+        public virtual event ControlHandler OnEnd;
+
         public Connection Base { get; }
         public bool Frozen { get; protected set; } = false;
         public bool Ended { get; protected set; } = false;
@@ -32,7 +34,16 @@ namespace CSSockets.Http.Definition
         public abstract bool FinishOutgoing();
 
         public abstract byte[] Freeze();
-        public abstract bool End();
+        public virtual bool End()
+        {
+            lock (Sync)
+            {
+                if (Ended) return false;
+                if (!Frozen) Freeze();
+                OnEnd?.Invoke();
+                return Ended = true;
+            }
+        }
         public virtual bool Terminate()
         {
             lock (Sync) return End() && Base.Terminate() && (Ended = true);

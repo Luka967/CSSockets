@@ -19,12 +19,15 @@ namespace CSSockets.WebSockets.Primitive
         {
             lock (Sync)
             {
-                if (!StartClose(code, reason)) return false;
                 MemoryDuplex buffer = new MemoryDuplex();
                 buffer.Write(new byte[2] { (byte)(code / 256), (byte)(code % 256) });
                 buffer.Write(Encoding.UTF8.GetBytes(reason ?? ""));
-                return Send(new Frame(true, 8, false, false, false, Mode.OutgoingMasked, buffer.Read()));
+                return Send(new Frame(true, 8, false, false, false, Mode.OutgoingMasked, buffer.Read())) && StartClose(code, reason);
             }
+        }
+        protected override bool SendClose(ushort code)
+        {
+            lock (Sync) return Send(new Frame(true, 8, false, false, false, Mode.OutgoingMasked, new byte[2] { (byte)(code / 256), (byte)(code % 256) }));
         }
         public override bool SendPing(byte[] payload)
         {

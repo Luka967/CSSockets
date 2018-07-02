@@ -81,7 +81,7 @@ namespace CSSockets.Http.Reference
         {
             lock (Sync)
             {
-                if (!hasReqBody) return false;
+                if (!hasReqBody) return true;
                 OutgoingBody.OnFinish -= FinishOutgoingMessage;
                 if (!OutgoingBody.Finished) OutgoingBody.Finish();
                 _Outgoing.Finish();
@@ -162,15 +162,6 @@ namespace CSSockets.Http.Reference
                 OutgoingBody.OnFail -= OnSegmentFail;
                 if (!gotResBody) OutgoingBody.OnFinish -= FinishOutgoingMessage;
                 return excess.Read();
-            }
-        }
-        public override bool End()
-        {
-            lock (Sync)
-            {
-                if (!Ended) return false;
-                if (!Frozen) Freeze();
-                return Ended = true;
             }
         }
     }

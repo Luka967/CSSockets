@@ -2,14 +2,14 @@
 using System.Text;
 using CSSockets.Http.Reference;
 using CSSockets.Http.Definition;
-using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Collections.Generic;
 
 namespace CSSockets.WebSockets.Definition
 {
     public delegate bool ClientVerifier(IPAddress remote, string[] subprotocols, RequestHead head);
     public delegate string SubprotocolChooser(IPAddress remote, string[] subprotocols, RequestHead head);
-    public abstract class Listener
+    public abstract class Listener : Negotiator
     {
         public Http.Reference.Listener Base { get; }
 
@@ -54,29 +54,26 @@ namespace CSSockets.WebSockets.Definition
             if (!CheckExtensions(requestedExtensions))
                 return DropRequest(res, 400, "Bad Request", "Extensions have been rejected");
 
+            string subprotocol = null;
             if (subprotocols.Length > 0 && SubprotocolChooser != null)
-                res["Sec-WebSocket-Protocol"] = SubprotocolChooser(remote, subprotocols, req.Head);
+                res["Sec-WebSocket-Protocol"] = subprotocol = SubprotocolChooser(remote, subprotocols, req.Head);
             string respondedExtensions = NegotiatingExtension.Stringify(RespondExtensions(requestedExtensions));
             if (respondedExtensions.Length > 0)
                 res["Sec-WebSocket-Extensions"] = respondedExtensions;
 
-            byte[] acceptBinary = Hasher.ComputeHash(Encoding.UTF8.GetBytes(req["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
-            string acceptStringified = System.Convert.ToBase64String(acceptBinary, System.Base64FormattingOptions.None);
-
             res["Connection"] = "Upgrade";
             res["Upgrade"] = "websocket";
             res["Sec-WebSocket-Version"] = "13";
-            res["Sec-WebSocket-Accept"] = acceptStringified;
+            res["Sec-WebSocket-Accept"] = Secret.ComputeAccept(req["Sec-WebSocket-Key"]);
             res.End(101, "Switching Protocols");
 
             byte[] trail = res.Connection.Freeze();
             if (!res.Connection.End()) return false;
-            FireConnection(res.Connection.Base, req.Head, trail);
+            FireConnection(res.Connection.Base, req.Head, subprotocol, trail);
             return true;
         }
-        protected abstract bool CheckExtensions(NegotiatingExtension[] requested);
-        protected abstract IEnumerable<NegotiatingExtension> RespondExtensions(NegotiatingExtension[] requested);
-        protected abstract void FireConnection(Tcp.Connection connection, RequestHead req, byte[] trail);
+        protected abstract void FireConnection(Tcp.Connection connection, RequestHead req, string subprotocol, byte[] trail);
+        protected override IEnumerable<NegotiatingExtension> RequestExtensions() => null;
 
         protected bool DropRequest(OutgoingResponse res, ushort code, string reason, string asciiBody = null, params Header[] headers)
         {

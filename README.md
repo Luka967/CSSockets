@@ -26,7 +26,7 @@ Implementations:
 - [X] TCP
   - [X] Client
   - [X] Server
-- [ ] HTTP
+- [X] HTTP
   - [X] Base HTTP classes
     - [X] Header
     - [X] Version
@@ -48,18 +48,18 @@ Implementations:
     - [X] Chunked
     - [X] Compressed binary
     - [X] Compressed chunked
-  - [ ] HTTP connections
-    - [ ] Client-side connection
+  - [X] HTTP connections
+    - [X] Client-side connection
     - [X] Server-side connection
   - [X] Support for custom upgrading
   - [X] HTTP listener
-- [ ] WebSockets
+- [X] WebSockets
   - [X] Message parsing
   - [X] Message serialization
-  - [ ] WebSocket connections
-    - [ ] Client-side connection
+  - [X] WebSocket connections
+    - [X] Client-side connection
     - [X] Server-side connection
-  - [ ] Support for custom extensions
+  - [X] Support for custom extensions
     - Implement permessage-deflate?
 - HTTPS?
 - Secure WebSockets?

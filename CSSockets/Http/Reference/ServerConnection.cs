@@ -148,15 +148,5 @@ namespace CSSockets.Http.Reference
                 return excess.Read();
             }
         }
-
-        public override bool End()
-        {
-            lock (Sync)
-            {
-                if (Ended) return false;
-                if (!Frozen) Freeze();
-                return Ended = true;
-            }
-        }
     }
 }

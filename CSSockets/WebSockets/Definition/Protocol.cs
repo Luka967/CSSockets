@@ -1,13 +1,10 @@
 ﻿using CSSockets.Binary;
 using CSSockets.Streams;
-using System.Security.Cryptography;
 
 namespace CSSockets.WebSockets.Definition
 {
     public struct Frame
     {
-        private static RandomNumberGenerator rng = RandomNumberGenerator.Create();
-
         public static byte GetXLengthSize(byte length)
             => length == 127 ? (byte)8 : length == 126 ? (byte)2 : (byte)0;
         public static byte GetLengthFromXLength(ulong xLength)
@@ -44,11 +41,7 @@ namespace CSSockets.WebSockets.Definition
             RSV3 = rsv3;
             ExtendedLength = (ulong)payload.LongLength;
             Length = GetLengthFromXLength(ExtendedLength);
-            if (Masked = masked)
-            {
-                Mask = new byte[4];
-                rng.GetBytes(Mask);
-            }
+            if (Masked = masked) Mask = Secret.GenerateMask();
             Payload = payload;
         }
         public Frame(bool fin, byte opcode, bool rsv1, bool rsv2, bool rsv3, byte[] mask, byte[] payload) : this()

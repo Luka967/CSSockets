@@ -66,10 +66,7 @@ namespace CSSockets.Http.Reference
                 if (!Listening) { connection.Terminate(); return; }
                 upgraded = new ServerConnection(connection, _OnRequest);
                 Connections.Add(connection);
-                connection.OnClose += () =>
-                {
-                    lock (Sync) Connections.Remove(connection);
-                };
+                upgraded.OnEnd += () => { lock (Sync) Connections.Remove(connection); };
             }
             OnConnection?.Invoke(upgraded);
         }

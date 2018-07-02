@@ -9,13 +9,15 @@ namespace CSSockets.WebSockets.Definition
     public delegate void CloseMessageHandler(ushort code, string reason);
     public abstract partial class Connection
     {
-        public Tcp.Connection Base { get; }
         public IMode Mode { get; }
+        public Tcp.Connection Base { get; }
+        public string Subprotocol { get; protected set; }
         public bool Opening => Base.State == TcpSocketState.Connecting;
         public bool Open => Base.State == TcpSocketState.Open;
         public bool Closing => SentClose;
         public bool Closed => RecvClose;
 
+        public virtual event ControlHandler OnOpen;
         public virtual event BinaryMessageHandler OnBinary;
         public virtual event StringMessageHandler OnString;
         public virtual event BinaryMessageHandler OnPing;
@@ -30,8 +32,9 @@ namespace CSSockets.WebSockets.Definition
             Parser.OnCollect += OnParserCollect;
             Merger.OnCollect += OnMergerCollect;
         }
-        public bool WriteTrail(byte[] trail)
+        public bool Initiate(byte[] trail, string subprotocol)
         {
+            if (Mode.FireOpen) OnOpen?.Invoke();
             if (!Parser.Write(trail)) return false;
             return Base.Pipe(Parser);
         }
@@ -71,6 +74,7 @@ namespace CSSockets.WebSockets.Definition
                 if (CloseCode != code) return false;
                 OnClose?.Invoke(CloseCode, CloseReason);
                 Base.OnClose -= FinishClose;
+                Base.End();
                 return RecvClose = true;
             }
         }
@@ -81,7 +85,8 @@ namespace CSSockets.WebSockets.Definition
                 if (RecvClose) return false;
                 OnClose?.Invoke(CloseCode = code, CloseReason = reason);
                 Base.OnClose -= FinishClose;
-                return RecvClose = true;
+                SendClose(code);
+                return Base.End() && (RecvClose = true);
             }
         }
 
@@ -131,6 +136,7 @@ namespace CSSockets.WebSockets.Definition
         public virtual bool SendPing(byte[] payload, ushort start, ulong end) => SendPing(PrimitiveBuffer.Slice(payload, start, end));
         protected abstract bool SendPong(byte[] payload);
         public abstract bool SendClose(ushort code, string reason = "");
+        protected abstract bool SendClose(ushort code);
 
         protected virtual bool Terminate(ushort code, string reason)
         {

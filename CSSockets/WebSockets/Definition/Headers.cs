@@ -11,7 +11,7 @@ namespace CSSockets.WebSockets.Definition
         public static bool TryParse(string s, out NegotiatingExtension[] result)
         {
             result = null;
-            if (s == "") return true;
+            if (s == "") { result = new NegotiatingExtension[0]; return true; }
             List<NegotiatingExtension> parsed = new List<NegotiatingExtension>();
             string[] spl = s.Split(",");
             for (int i = 0; i < spl.Length; i++)

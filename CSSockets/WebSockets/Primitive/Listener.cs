@@ -16,13 +16,13 @@ namespace CSSockets.WebSockets.Primitive
         public Listener(Tcp.Listener listener) : base(listener) { }
         public Listener(Http.Reference.Listener listener) : base(listener) { }
 
-        protected override bool CheckExtensions(NegotiatingExtension[] requested) => true;
+        protected override bool CheckExtensions(NegotiatingExtension[] extensions) => true;
         protected override IEnumerable<NegotiatingExtension> RespondExtensions(NegotiatingExtension[] requested) => Enumerable.Empty<NegotiatingExtension>();
-        protected override void FireConnection(Tcp.Connection connection, RequestHead req, byte[] trail)
+        protected override void FireConnection(Tcp.Connection connection, RequestHead req, string subprotocol, byte[] trail)
         {
             Connection newConnection = new Connection(connection, req, new Definition.Connection.ServerMode());
             OnConnection?.Invoke(newConnection);
-            newConnection.WriteTrail(trail);
+            newConnection.Initiate(trail, subprotocol);
         }
     }
 }
